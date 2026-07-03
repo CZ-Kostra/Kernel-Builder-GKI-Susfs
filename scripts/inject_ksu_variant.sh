@@ -1,13 +1,28 @@
 #!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 cd kernel_workspace
 [ -d common ] || { echo "[-] common/ not found in kernel_workspace" >&2; exit 1; }
 
 VARIANT=$1
-MANAGER_DIR="KernelSU"
-rm -rf "${MANAGER_DIR}"
 KSU_VARIANT_REF=$(echo "${KSU_VARIANT_REF}" | xargs)
+
+# 1. Map the expected directory name based on the variant's internal setup.sh hardcoding
+case "${VARIANT}" in
+    "KernelSU-Next")
+        MANAGER_DIR="KernelSU-Next"
+        ;;
+    "SukiSU-Ultra" | "ReSukiSU" | "KernelSU")
+        # These forks still expect the folder to be named "KernelSU" internally
+        MANAGER_DIR="KernelSU"
+        ;;
+    *)
+        MANAGER_DIR="KernelSU"
+        ;;
+esac
+
+rm -rf "${MANAGER_DIR}"
 
 echo "=== Integrating ${VARIANT} ==="
 echo ">>> Cloning custom pipeline branch: ${KSU_VARIANT_REF}..."
@@ -45,9 +60,8 @@ RAW_BASE=$(git -C "${MANAGER_DIR}" merge-base HEAD FETCH_HEAD)
 # 2. Walk backward STRICTLY down the official mainline branch, ignoring bots
 # We temporarily suspend pipefail because 'head -n 1' intentionally breaks the pipe
 # to stop reading history early, throwing a harmless SIGPIPE error that pipefail would otherwise catch.
-set +o pipefail
-UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H %an" | grep -iv "dependabot" | head -n 1 | awk '{print $1}')
-set -o pipefail
+UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H %an" | grep -m 1 -iv "dependabot" | awk '{print $1}')
+
 
 SHORT_HASH=${UPSTREAM_HASH:0:7}
 
