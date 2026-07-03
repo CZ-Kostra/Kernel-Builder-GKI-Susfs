@@ -58,8 +58,7 @@ else
     fi
 fi
 
-IMAGE_PATH="$(find out/dist -type f -name 'Image' | head -n1)"
-
+IMAGE_PATH="$(find out/dist -type f -name 'Image' -print -quit)"
 if [ -z "${IMAGE_PATH}" ] || [ ! -f "${IMAGE_PATH}" ]; then
   echo "[-] No compilation Image produced!" >&2
   exit 1
@@ -126,7 +125,7 @@ if [ "$WITH_WG" = "true" ]; then
     for CFG in "${REQUIRED_CONFIGS[@]}"; do
         # Extract setting state whether compressed or plain text
         if [[ "$CONFIG_SRC" == *.gz ]]; then
-            VAL=$(zcat "$CONFIG_SRC" | grep -E "^${CFG}=" | cut -d'=' -f2 || true)
+            VAL=$(zgrep -E "^${CFG}=" "$CONFIG_SRC" | cut -d'=' -f2 || true)
         else
             VAL=$(grep -E "^${CFG}=" "$CONFIG_SRC" | cut -d'=' -f2 || true)
         fi
