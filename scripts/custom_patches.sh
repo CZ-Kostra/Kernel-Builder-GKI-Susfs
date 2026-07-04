@@ -238,7 +238,7 @@ EOF
                 
                 # 10. kernel/feature/selinux_hide.c (Remove static from drop_backup for 6.6 linkage)
                 if [ -f kernel/feature/selinux_hide.c ]; then
-                    awk '{ gsub(/static void ksu_selinux_hide_drop_backup_if_unused/, "void ksu_selinux_hide_drop_backup_if_unused"); print }' kernel/feature/selinux_hide.c > tmp.c && mv mv tmp.c kernel/feature/selinux_hide.c
+                    awk '{ gsub(/static void ksu_selinux_hide_drop_backup_if_unused/, "void ksu_selinux_hide_drop_backup_if_unused"); print }' kernel/feature/selinux_hide.c > tmp.c && mv tmp.c kernel/feature/selinux_hide.c
                 fi
 
                 # 11. kernel/feature/sucompat.h (Inject missing forward declarations and function signatures)
