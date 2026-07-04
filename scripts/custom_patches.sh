@@ -138,7 +138,7 @@ EOF
         /long ksu_handle_faccessat_sucompat/ { in_fac = 1; in_stat = 0; }
         /long ksu_handle_stat_sucompat/ { in_stat = 1; in_fac = 0; }
         /long ksu_handle_execve_sucompat/ { in_stat = 0; in_fac = 0; }
-        /if \(unlikely\(\!memcmp\(path, su_path, sizeof\(su_path\)\)\)\) \{/ {
+        /if \(unlikely\(!memcmp\(path, su_path, sizeof\(su_path\)\)\)\) \{/ {
             print
             if (in_fac) print "\t\tif (current_chrooted()) {\n\t\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\t\tgoto do_orig_facessat;\n\t\t}"
             else if (in_stat) print "\t\tif (current_chrooted()) {\n\t\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\t\tgoto do_orig_stat;\n\t\t}"
