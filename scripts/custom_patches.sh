@@ -194,6 +194,33 @@ EOF
             awk '{ gsub(/static void ksu_selinux_hide_drop_backup_if_unused/, "void ksu_selinux_hide_drop_backup_if_unused"); print }' kernel/feature/selinux_hide.c > tmp.c && mv tmp.c kernel/feature/selinux_hide.c
         fi
 
+        # 11. kernel/feature/sucompat.h (Inject missing forward declarations and function signatures)
+        awk '
+        BEGIN {
+            print "struct pt_regs;"
+            print "struct user_arg_ptr;"
+        }
+        { print }
+        END {
+            print "long ksu_handle_stat_sucompat(int orig_nr, struct pt_regs *regs);"
+            print "long ksu_handle_faccessat_sucompat(int orig_nr, struct pt_regs *regs);"
+            print "long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, struct pt_regs *regs);"
+        }
+        ' kernel/feature/sucompat.h > tmp.h && mv tmp.h kernel/feature/sucompat.h
+
+        # 12. Upgrade SukiSU-Ultra's adb_root module to match Next's modernized signature
+        echo ">>> Upgrading SukiSU-Ultra adb_root to Next standard to preserve toggle functionality..."
+        curl -sL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/main/kernel/feature/adb_root.c" -o kernel/feature/adb_root.c
+        curl -sL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/main/kernel/feature/adb_root.h" -o kernel/feature/adb_root.h
+
+        # 13. kernel/hook/syscall_event_bridge.c (Fix old_uid unused var)
+        awk '
+        /uid_t old_uid = current_uid\(\)\.val;/ {
+            print $0 " (void)old_uid;"
+            next
+        }
+        1' kernel/hook/syscall_event_bridge.c > tmp.c && mv tmp.c kernel/hook/syscall_event_bridge.c
+
         # Cleanup rejected files so the workspace is pristine for compilation
         find . -name "*.rej" -type f -delete
         echo ">>> SukiSU-Ultra awk fixups applied successfully!"
@@ -203,3 +230,4 @@ EOF
     
     cd ../..
 fi
+
