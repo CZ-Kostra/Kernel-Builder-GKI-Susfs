@@ -3,16 +3,30 @@
 
 set -euo pipefail
 
-# 1. Isolate KernelSU-Next (Native 2.20 support)
+# 1. Map the expected directory name based on the variant's internal setup
+case "${SU_VARIANT}" in
+    "KernelSU-Next")
+        MANAGER_DIR="KernelSU-Next"
+        ;;
+    "SukiSU-Ultra" | "ReSukiSU" | "KernelSU")
+        # These forks still expect the folder to be named "KernelSU" internally
+        MANAGER_DIR="KernelSU"
+        ;;
+    *)
+        MANAGER_DIR="KernelSU"
+        ;;
+esac
+
+# 2. Isolate KernelSU-Next (Native 2.20 support)
 if [[ "${SU_VARIANT}" != "KernelSU-Next" ]]; then
     echo ">>> Target is ${SU_VARIANT}. Applying Universal SuSFS 2.20 Patch..."
     
-    cd kernel_workspace/KernelSU
+    cd "kernel_workspace/${MANAGER_DIR}"
     
     # Apply the filtered patch. We use || true so a rejection doesn't instantly crash the CI runner.
     patch -p1 --no-backup-if-mismatch < ../../patches/2.20_universal_susfs.patch || true
     
-    # 2. Catch rejections and route them to the specific variant's fixup routine
+    # Catch rejections and route them to the specific variant's fixup routine
     if find . -name "*.rej" | grep -q "."; then
         echo "[-] Patch rejections detected for ${SU_VARIANT}!"
         
@@ -37,8 +51,9 @@ if [[ "${SU_VARIANT}" != "KernelSU-Next" ]]; then
                 /kernelsu-objs \+= infra\/file_wrapper\.o/ { skip = 0 }
                 !skip { print }' kernel/Kbuild > tmp.mk && mv tmp.mk kernel/Kbuild
 
-                # 2. kernel/core/init.c (Inject SuSFS init/exit routines around SukiSU's stripped core)
-                awk '/if \(ksu_late_loaded\) \{/ {
+                # 2. kernel/core/init.c (Inject SuSFS init/exit, remove Next-exclusive selinux_hide_init)
+                awk '/ksu_selinux_hide_init\(\);/ { next }
+                /if \(ksu_late_loaded\) \{/ {
                     print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n#endif"
                     print; next
                 }
@@ -72,10 +87,16 @@ int ksu_supercall_reboot_handler(void __user **arg)
 #endif
 EOF
 
-                # 4. kernel/selinux/selinux.c (Append all missing SuSFS SID caching mechanisms)
+                # 4. kernel/selinux/selinux.c (Revert patch corruption and append SuSFS SID caching)
+                git checkout kernel/selinux/selinux.c || true
                 cat << 'EOF' >> kernel/selinux/selinux.c
 
 #ifdef CONFIG_KSU_SUSFS
+u32 susfs_zygote_sid = 0;
+u32 susfs_ksu_sid = 0;
+u32 susfs_init_sid = 0;
+u32 susfs_priv_app_sid = 0;
+
 #define KERNEL_INIT_DOMAIN "u:r:init:s0"
 #define KERNEL_ZYGOTE_DOMAIN "u:r:zygote:s0"
 #define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
@@ -119,6 +140,7 @@ void susfs_set_batch_sid(void) {
 EOF
 
                 # 5. kernel/feature/sucompat.c (Static keys, user paths, chroot protections, and strip sulog)
+                # We dynamically capture indentation with match() to prevent GCC -Wmisleading-indentation errors!
                 awk '
                 /ksu_compat_sulog/ { next }
                 /bool ksu_su_compat_enabled __read_mostly = true;/ {
@@ -147,14 +169,31 @@ EOF
                 /long ksu_handle_stat_sucompat/ { in_stat = 1; in_fac = 0; }
                 /long ksu_handle_execve_sucompat/ { in_stat = 0; in_fac = 0; }
                 /if \(unlikely\(!memcmp\(path, su_path, sizeof\(su_path\)\)\)\) \{/ {
+                    match($0, /^[ \t]*/)
+                    indent = substr($0, RSTART, RLENGTH)
                     print
-                    if (in_fac) print "\t\tif (current_chrooted()) {\n\t\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\t\tgoto do_orig_facessat;\n\t\t}"
-                    else if (in_stat) print "\t\tif (current_chrooted()) {\n\t\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\t\tgoto do_orig_stat;\n\t\t}"
+                    if (in_fac) {
+                        print indent "    if (current_chrooted()) {"
+                        print indent "        pr_err(\"ksu: su found but NOT allowed in chroot\\n\");"
+                        print indent "        goto do_orig_facessat;"
+                        print indent "    }"
+                    } else if (in_stat) {
+                        print indent "    if (current_chrooted()) {"
+                        print indent "        pr_err(\"ksu: su found but NOT allowed in chroot\\n\");"
+                        print indent "        goto do_orig_stat;"
+                        print indent "    }"
+                    }
                     next
                 }
                 /if \(likely\(memcmp\(path, su_path, sizeof\(su_path\)\)\)\)/ {
+                    match($0, /^[ \t]*/)
+                    indent = substr($0, RSTART, RLENGTH)
                     print; getline; print
-                    print "\n\tif (current_chrooted()) {\n\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\tgoto do_orig_execve;\n\t}"
+                    print ""
+                    print indent "if (current_chrooted()) {"
+                    print indent "    pr_err(\"ksu: su found but NOT allowed in chroot\\n\");"
+                    print indent "    goto do_orig_execve;"
+                    print indent "}"
                     next
                 }
                 1' kernel/feature/sucompat.c > tmp.c && mv tmp.c kernel/feature/sucompat.c
@@ -217,8 +256,8 @@ EOF
 
                 # 12. Upgrade SukiSU-Ultra's adb_root module to match Next's modernized signature
                 echo ">>> Upgrading SukiSU-Ultra adb_root to Next standard to preserve toggle functionality..."
-                curl -sL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/main/kernel/feature/adb_root.c" -o kernel/feature/adb_root.c
-                curl -sL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/main/kernel/feature/adb_root.h" -o kernel/feature/adb_root.h
+                curl -sL "https://raw.githubusercontent.com/pershoot/KernelSU-Next/393654c921f4467399dcdef833641c5b0b39d75b/kernel/feature/adb_root.c" -o kernel/feature/adb_root.c
+                curl -sL "https://raw.githubusercontent.com/pershoot/KernelSU-Next/393654c921f4467399dcdef833641c5b0b39d75b/kernel/feature/adb_root.h" -o kernel/feature/adb_root.h
 
                 # 13. kernel/hook/syscall_event_bridge.c (Fix old_uid unused var)
                 awk '
@@ -227,11 +266,34 @@ EOF
                     next
                 }
                 1' kernel/hook/syscall_event_bridge.c > tmp.c && mv tmp.c kernel/hook/syscall_event_bridge.c
+
+                # 14. kernel/runtime/ksud_integration.c (Silence unused argv and stop_input_hook_work variables)
+                awk '
+                /struct user_arg_ptr argv = / {
+                    print $0 " (void)argv;"
+                    next
+                }
+                /static struct work_struct stop_input_hook_work;/ {
+                    print "static struct work_struct stop_input_hook_work __attribute__((unused));"
+                    next
+                }
+                1' kernel/runtime/ksud_integration.c > tmp.c && mv tmp.c kernel/runtime/ksud_integration.c
+
+                # 15. kernel/policy/app_profile.c (Silence unused p and t variables)
+                awk '
+                /struct task_struct \*p = current;/ {
+                    print $0 " (void)p;"
+                    next
+                }
+                /struct task_struct \*t;/ {
+                    print $0 " (void)t;"
+                    next
+                }
+                1' kernel/policy/app_profile.c > tmp.c && mv tmp.c kernel/policy/app_profile.c
                 ;;
 
             "ReSukiSU")
                 echo ">>> Initiating ReSukiSU mapping routine..."
-                # Dump the ReSukiSU rejections to the log for analysis
                 for rej_file in $(find . -name "*.rej"); do
                     echo "========================================"
                     echo "FILE: $rej_file"
@@ -243,7 +305,6 @@ EOF
 
             "KernelSU")
                 echo ">>> Initiating Mainline KernelSU mapping routine..."
-                # Dump the Mainline KernelSU rejections to the log for analysis
                 for rej_file in $(find . -name "*.rej"); do
                     echo "========================================"
                     echo "FILE: $rej_file"
@@ -275,13 +336,24 @@ fi
 # Universal Feature Auto-Enabler (KPM)
 # ==========================================
 echo ">>> Scanning KernelSU variant for optional features..."
-KSU_KCONFIG="kernel_workspace/KernelSU/kernel/Kconfig"
+KSU_KCONFIG="kernel_workspace/${MANAGER_DIR}/kernel/Kconfig"
+KSU_KBUILD="kernel_workspace/${MANAGER_DIR}/kernel/Kbuild"
 
-# Check if the variant's Kconfig natively supports KPM
 if [ -f "$KSU_KCONFIG" ] && grep -q "config KPM" "$KSU_KCONFIG"; then
-    echo ">>> KPM (Kernel Patch Manager) support detected! Auto-enabling via Kconfig default..."
-    # Safely flip 'default n' to 'default y' inside the KPM block without touching gki_defconfig
-    sed -i '/config KPM/,/default/ s/default n/default y/' "$KSU_KCONFIG"
+    echo ">>> KPM (Kernel Patch Manager) support detected!"
+    echo ">>> Bypassing Kleaf strictness by forcing KPM directly in Kbuild..."
+    
+    if [ -f "$KSU_KBUILD" ]; then
+        # Prepend the Make variable and the C Preprocessor flag directly into Kbuild
+        echo "CONFIG_KPM := y" > tmp_kbuild
+        echo "ccflags-y += -DCONFIG_KPM=1" >> tmp_kbuild
+        cat "$KSU_KBUILD" >> tmp_kbuild
+        mv tmp_kbuild "$KSU_KBUILD"
+        
+        echo ">>> KPM forced successfully in Kbuild!"
+    else
+        echo "[-] Kbuild not found. Skipping KPM enablement..."
+    fi
 else
     echo ">>> KPM not supported by this variant or Kconfig missing. Skipping..."
 fi
