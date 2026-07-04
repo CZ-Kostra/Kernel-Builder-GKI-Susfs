@@ -234,7 +234,7 @@ EOF
                 }
                 END {
                     print "\n#ifdef CONFIG_KSU_SUSFS"
-                    print "void ksu_handle_toolkit_reboot(void) {}"
+                    print "int ksu_handle_toolkit_reboot(int magic2, unsigned int cmd, void __user *arg) { return 0; }"
                     print "void ksu_toolkit_uname_reset(void) {}"
                     print "void ksu_avc_spoof_disable(void) {}"
                     print "bool ksu_avc_spoof_enabled = false;"
