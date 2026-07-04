@@ -6,51 +6,46 @@ set -euo pipefail
 if [[ "${SU_VARIANT}" == "SukiSU-Ultra" ]]; then
     echo ">>> Target is SukiSU-Ultra. Applying Universal SuSFS 2.20 Patch..."
     
-    # Navigate into the staged manager directory
     cd kernel_workspace/KernelSU
     
-    # Attempt to apply the patch. We use || true so a rejection doesn't instantly crash the CI runner.
-    # --no-backup-if-mismatch prevents patch from leaving messy .orig files around
+    # Apply the filtered patch. We use || true so a rejection doesn't instantly crash the CI runner.
     patch -p1 --no-backup-if-mismatch < ../../patches/2.20_universal_susfs.patch || true
     
     # Catch and resolve rejected hunks dynamically
     if find . -name "*.rej" | grep -q "."; then
-        echo "[-] Patch rejections detected! Initiating dynamic fixup routine for SukiSU-Ultra..."
+        echo "[-] Patch rejections detected! Initiating awk fixup routine for SukiSU-Ultra..."
 
         # 1. kernel/Kbuild (Strip Next-specific hooks and apply SuSFS exclusions)
-        sed -i '/kernelsu-objs += hook\/lsm_hook.o/,/endif/c\
-# Core utilities\
-ifeq ($(strip $(CONFIG_KPROBES)),y)\
-kernelsu-objs += hook/lsm_hook.o\
-ifeq ($(CONFIG_ARM64),y)\
-kernelsu-objs += hook/arm64/patch_memory.o\
-else ifeq ($(CONFIG_X86_64),y)\
-kernelsu-objs += hook/x86_64/patch_memory.o\
-endif\
-endif\
-\
-# Hooks (excluded for SuSFS)\
-ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\
-ifeq ($(strip $(CONFIG_KPROBES)),y)\
-kernelsu-objs += hook/syscall_event_bridge.o\
-kernelsu-objs += hook/syscall_hook_manager.o\
-kernelsu-objs += hook/tp_marker.o\
-ifeq ($(CONFIG_ARM64),y)\
-kernelsu-objs += hook/arm64/syscall_hook.o\
-else ifeq ($(CONFIG_X86_64),y)\
-kernelsu-objs += hook/x86_64/syscall_hook.o\
-endif\
-endif\
-endif\
-\
-kernelsu-objs += hook/setuid_hook.o' kernel/Kbuild
+        awk '/kernelsu-objs \+= hook\/lsm_hook\.o/ {
+            print "# Core utilities\nifeq ($(strip $(CONFIG_KPROBES)),y)\nkernelsu-objs += hook/lsm_hook.o"
+            print "ifeq ($(CONFIG_ARM64),y)\nkernelsu-objs += hook/arm64/patch_memory.o\nelse ifeq ($(CONFIG_X86_64),y)"
+            print "kernelsu-objs += hook/x86_64/patch_memory.o\nendif\nendif\n\n# Hooks (excluded for SuSFS)"
+            print "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\nifeq ($(strip $(CONFIG_KPROBES)),y)"
+            print "kernelsu-objs += hook/syscall_event_bridge.o\nkernelsu-objs += hook/syscall_hook_manager.o\nkernelsu-objs += hook/tp_marker.o"
+            print "ifeq ($(CONFIG_ARM64),y)\nkernelsu-objs += hook/arm64/syscall_hook.o\nelse ifeq ($(CONFIG_X86_64),y)"
+            print "kernelsu-objs += hook/x86_64/syscall_hook.o\nendif\nendif\nendif\n"
+            print "kernelsu-objs += hook/setuid_hook.o"
+            skip = 1; next
+        }
+        /kernelsu-objs \+= hook\/setuid_hook\.o/ { skip = 0; next }
+        !skip { print }' kernel/Kbuild > tmp.mk && mv tmp.mk kernel/Kbuild
 
         # 2. kernel/core/init.c (Inject SuSFS init/exit routines around SukiSU's stripped core)
-        sed -i '/if (ksu_late_loaded) {/i #ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n\tksu_avc_spoof_init();\n#endif\n' kernel/core/init.c
-        sed -i '/if (!getenforce()) {/i \t#ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_late_init();\n\t#endif\n\tksu_selinux_hide_drop_backup_if_unused();\n' kernel/core/init.c
-        sed -i '/ksu_selinux_hide_exit();/i #ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_exit();\n\tksu_sucompat_exit();\n\tksu_setuid_hook_exit();\n#endif\n' kernel/core/init.c
+        awk '/if \(ksu_late_loaded\) \{/ {
+            print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n\tksu_avc_spoof_init();\n#endif"
+            print; next
+        }
+        /if \(!getenforce\(\)\) \{/ {
+            print "\t#ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_late_init();\n\t#endif\n\tksu_selinux_hide_drop_backup_if_unused();"
+            print; next
+        }
+        /ksu_selinux_hide_exit\(\);/ {
+            print "#ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_exit();\n\tksu_sucompat_exit();\n\tksu_setuid_hook_exit();\n#endif"
+            print; next
+        }
+        1' kernel/core/init.c > tmp.c && mv tmp.c kernel/core/init.c
 
-        # 3. kernel/supercall/supercall.c (Inject only the SuSFS reboot handler, ignore missing toolkit)
+        # 3. kernel/supercall/supercall.c (Inject only the SuSFS reboot handler)
         cat << 'EOF' >> kernel/supercall/supercall.c
 
 #ifdef CONFIG_KSU_SUSFS
@@ -117,38 +112,88 @@ void susfs_set_batch_sid(void) {
 EOF
 
         # 5. kernel/feature/sucompat.c (Static keys, user paths, and chroot protections)
-        sed -i 's/bool ksu_su_compat_enabled __read_mostly = true;/static const char sh_path[] = SH_PATH;\nstatic const char su_path[] = SU_PATH;\nstatic const char ksud_path[] = KSUD_PATH;\n\nDEFINE_STATIC_KEY_TRUE(ksu_su_compat_enabled);/' kernel/feature/sucompat.c
-        sed -i '/static int su_compat_feature_get/,/}/c\static int su_compat_feature_get(u64 *value)\n{\n    if (static_key_enabled(&ksu_su_compat_enabled))\n        *value = 1;\n    else\n        *value = 0;\n    return 0;\n}' kernel/feature/sucompat.c
-        sed -i '/static int su_compat_feature_set/,/}/c\static int su_compat_feature_set(u64 value)\n{\n    bool enable = value != 0;\n    if (enable)\n        static_branch_enable(&ksu_su_compat_enabled);\n    else\n        static_branch_disable(&ksu_su_compat_enabled);\n    pr_info("su_compat: set to %d\\n", enable);\n    return 0;\n}' kernel/feature/sucompat.c
-        sed -i '/static char __user \*ksud_user_path/i static char __user *sh_user_path(void)\n{\n    static const char sh_path_local[] = "/system/bin/sh";\n    return userspace_stack_buffer(sh_path_local, sizeof(sh_path_local));\n}\n' kernel/feature/sucompat.c
-        sed -i '/static char __user \*ksud_user_path/,/}/c\static char __user *ksud_user_path(void)\n{\n    static const char ksud_path_local[] = KSUD_PATH;\n    return userspace_stack_buffer(ksud_path_local, sizeof(ksud_path_local));\n}' kernel/feature/sucompat.c
-        
-        # Inject chroot guards into the handler functions
-        sed -i '/long ksu_handle_faccessat_sucompat/,/old_cred = override_creds(ksu_cred);/ s/if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {/if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {\n\t\tif (current_chrooted()) {\n\t\t\tpr_err("ksu: su found but NOT allowed in chroot\\n");\n\t\t\tgoto do_orig_facessat;\n\t\t}/' kernel/feature/sucompat.c
-        sed -i '/long ksu_handle_stat_sucompat/,/old_cred = override_creds(ksu_cred);/ s/if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {/if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {\n\t\tif (current_chrooted()) {\n\t\t\tpr_err("ksu: su found but NOT allowed in chroot\\n");\n\t\t\tgoto do_orig_stat;\n\t\t}/' kernel/feature/sucompat.c
-        sed -i '/long ksu_handle_execve_sucompat/,/ksu_compat_sulog/ s/goto do_orig_execve;/goto do_orig_execve;\n\n\tif (current_chrooted()) {\n\t\tpr_err("ksu: su found but NOT allowed in chroot\\n");\n\t\tgoto do_orig_execve;\n\t}/' kernel/feature/sucompat.c
+        awk '
+        /bool ksu_su_compat_enabled __read_mostly = true;/ {
+            print "static const char sh_path[] = SH_PATH;\nstatic const char su_path[] = SU_PATH;\nstatic const char ksud_path[] = KSUD_PATH;\n\nDEFINE_STATIC_KEY_TRUE(ksu_su_compat_enabled);"
+            next
+        }
+        /static int su_compat_feature_get/,/}/ {
+            if ($0 ~ /}/) { print "static int su_compat_feature_get(u64 *value)\n{\n\tif (static_key_enabled(&ksu_su_compat_enabled))\n\t\t*value = 1;\n\telse\n\t\t*value = 0;\n\treturn 0;\n}" }
+            next
+        }
+        /static int su_compat_feature_set/,/}/ {
+            if ($0 ~ /}/) { print "static int su_compat_feature_set(u64 value)\n{\n\tbool enable = value != 0;\n\tif (enable)\n\t\tstatic_branch_enable(&ksu_su_compat_enabled);\n\telse\n\t\tstatic_branch_disable(&ksu_su_compat_enabled);\n\tpr_info(\"su_compat: set to %d\\n\", enable);\n\treturn 0;\n}" }
+            next
+        }
+        /static char __user \*ksud_user_path/ {
+            if (!sh_path_added) {
+                print "static char __user *sh_user_path(void)\n{\n\tstatic const char sh_path_local[] = \"/system/bin/sh\";\n\treturn userspace_stack_buffer(sh_path_local, sizeof(sh_path_local));\n}\n"
+                sh_path_added = 1
+            }
+        }
+        /static char __user \*ksud_user_path/,/}/ {
+            if ($0 ~ /}/) { print "static char __user *ksud_user_path(void)\n{\n\tstatic const char ksud_path_local[] = KSUD_PATH;\n\treturn userspace_stack_buffer(ksud_path_local, sizeof(ksud_path_local));\n}" }
+            next
+        }
+        /long ksu_handle_faccessat_sucompat/ { in_fac = 1; in_stat = 0; }
+        /long ksu_handle_stat_sucompat/ { in_stat = 1; in_fac = 0; }
+        /long ksu_handle_execve_sucompat/ { in_stat = 0; in_fac = 0; }
+        /if \(unlikely\(\!memcmp\(path, su_path, sizeof\(su_path\)\)\)\) \{/ {
+            print
+            if (in_fac) print "\t\tif (current_chrooted()) {\n\t\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\t\tgoto do_orig_facessat;\n\t\t}"
+            else if (in_stat) print "\t\tif (current_chrooted()) {\n\t\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\t\tgoto do_orig_stat;\n\t\t}"
+            next
+        }
+        /if \(likely\(memcmp\(path, su_path, sizeof\(su_path\)\)\)\)/ {
+            print; getline; print
+            print "\n\tif (current_chrooted()) {\n\t\tpr_err(\"ksu: su found but NOT allowed in chroot\\n\");\n\t\tgoto do_orig_execve;\n\t}"
+            next
+        }
+        1' kernel/feature/sucompat.c > tmp.c && mv tmp.c kernel/feature/sucompat.c
 
         # 6. kernel/feature/kernel_umount.c (Exclude zygote checks for SuSFS and update init signature)
-        sed -i 's/bool is_zygote_child = is_zygote(current_cred());/#ifndef CONFIG_KSU_SUSFS\n    bool is_zygote_child = is_zygote(current_cred());/' kernel/feature/kernel_umount.c
-        sed -i '/pr_info("handle umount ignore non zygote child:/,/return 0;/ { /return 0;/a \    #endif\n}' kernel/feature/kernel_umount.c
-        sed -i '/void __init ksu_kernel_umount_init/,/}/c\void __init ksu_kernel_umount_init(void)\n{\n    ksu_register_feature_handler(\&kernel_umount_handler);\n}' kernel/feature/kernel_umount.c
+        awk '
+        /bool is_zygote_child = is_zygote/ { print "#ifndef CONFIG_KSU_SUSFS"; print; next }
+        /pr_info\("handle umount ignore non zygote child/ { print; getline; print; getline; print; print "#endif"; next }
+        /if \(ksu_register_feature_handler/ { print "\tksu_register_feature_handler(&kernel_umount_handler);"; getline; getline; next }
+        1' kernel/feature/kernel_umount.c > tmp.c && mv tmp.c kernel/feature/kernel_umount.c
 
         # 7. kernel/hook/setuid_hook.c (Swap seccomp bypass for native disable_seccomp)
-        sed -i '/if (current->seccomp.mode == SECCOMP_MODE_FILTER/,/}/c\        disable_seccomp();' kernel/hook/setuid_hook.c
+        awk '/if \(current->seccomp\.mode == SECCOMP_MODE_FILTER/,/}/ {
+            if ($0 ~ /}/) print "\t\tdisable_seccomp();"
+            next
+        }
+        1' kernel/hook/setuid_hook.c > tmp.c && mv tmp.c kernel/hook/setuid_hook.c
 
         # 8. kernel/supercall/dispatch.c (Update hook mode responses)
-        sed -i 's/#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS/#ifndef CONFIG_KSU_SUSFS\n#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS/' kernel/supercall/dispatch.c
-        sed -i '/strscpy(cmd.mode, "Kprobes", sizeof(cmd.mode));/,/#endif/c\        strscpy(cmd.mode, "Kprobes", sizeof(cmd.mode));\n#endif\n#elif defined(CONFIG_HAVE_SYSCALL_TRACEPOINTS) || defined(CONFIG_KPROBES)\n    strscpy(cmd.mode, "Hybrid", sizeof(cmd.mode));\n#else\n    strscpy(cmd.mode, "Inline", sizeof(cmd.mode));\n#endif' kernel/supercall/dispatch.c
+        awk '
+        /#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS/ {
+            if (!done) { print "#ifndef CONFIG_KSU_SUSFS"; print; done=1 } else { print }
+            next
+        }
+        /strscpy\(cmd\.mode, "Kprobes", sizeof\(cmd\.mode\)\);/ {
+            print; getline; print
+            print "#elif defined(CONFIG_HAVE_SYSCALL_TRACEPOINTS) || defined(CONFIG_KPROBES)"
+            print "\tstrscpy(cmd.mode, \"Hybrid\", sizeof(cmd.mode));"
+            print "#else\n\tstrscpy(cmd.mode, \"Inline\", sizeof(cmd.mode));\n#endif"
+            next
+        }
+        1' kernel/supercall/dispatch.c > tmp.c && mv tmp.c kernel/supercall/dispatch.c
 
         # 9. kernel/runtime/boot_event.c (Inject input hook static key)
-        sed -i '/bool ksu_boot_completed __read_mostly = false;/a \n#ifdef CONFIG_KSU_SUSFS\nextern struct static_key_true ksu_is_input_hook_enabled;\n#endif\nextern void ksu_avc_spoof_late_init(void);' kernel/runtime/boot_event.c
+        awk '/bool ksu_boot_completed __read_mostly = false;/ {
+            print "\n#ifdef CONFIG_KSU_SUSFS\nextern struct static_key_true ksu_is_input_hook_enabled;\n#endif"
+            print "extern void ksu_avc_spoof_late_init(void);"
+            next
+        }
+        1' kernel/runtime/boot_event.c > tmp.c && mv tmp.c kernel/runtime/boot_event.c
 
         # Cleanup rejected files so the workspace is pristine for compilation
         find . -name "*.rej" -type f -delete
-        echo ">>> SukiSU-Ultra dynamic fixups applied successfully!"
+        echo ">>> SukiSU-Ultra awk fixups applied successfully!"
     else
         echo ">>> Patch applied cleanly!"
     fi
-   
+    
     cd ../..
 fi
