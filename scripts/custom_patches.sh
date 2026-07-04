@@ -13,13 +13,19 @@ if [[ "${SU_VARIANT}" == "SukiSU-Ultra" ]]; then
     # --no-backup-if-mismatch prevents patch from leaving messy .orig files around
     patch -p1 --no-backup-if-mismatch < ../../patches/2.20_universal_susfs.patch || true
     
-    # Catch and display any rejected hunks for our fixup script
+    # Catch, display, and read any rejected hunks for our fixup script
     if find . -name "*.rej" | grep -q "."; then
-        echo "[-] Patch resulted in rejections! Locating .rej files:"
-        find . -name "*.rej"
+        echo "[-] Patch resulted in rejections! Dumping .rej contents for analysis:"
+        for rej_file in $(find . -name "*.rej"); do
+            echo "========================================"
+            echo "FILE: $rej_file"
+            echo "========================================"
+            cat "$rej_file"
+            echo ""
+        done
     else
         echo ">>> Patch applied cleanly!"
     fi
-    
+   
     cd ../..
 fi
