@@ -111,8 +111,9 @@ void susfs_set_batch_sid(void) {
 #endif
 EOF
 
-        # 5. kernel/feature/sucompat.c (Static keys, user paths, and chroot protections)
+        # 5. kernel/feature/sucompat.c (Static keys, user paths, chroot protections, and strip sulog)
         awk '
+        /ksu_compat_sulog/ { next }
         /bool ksu_su_compat_enabled __read_mostly = true;/ {
             print "static const char sh_path[] = SH_PATH;\nstatic const char su_path[] = SU_PATH;\nstatic const char ksud_path[] = KSUD_PATH;\n\nDEFINE_STATIC_KEY_TRUE(ksu_su_compat_enabled);"
             next
@@ -187,6 +188,11 @@ EOF
             next
         }
         1' kernel/runtime/boot_event.c > tmp.c && mv tmp.c kernel/runtime/boot_event.c
+        
+        # 10. kernel/feature/selinux_hide.c (Remove static from drop_backup for 6.6 linkage)
+        if [ -f kernel/feature/selinux_hide.c ]; then
+            awk '{ gsub(/static void ksu_selinux_hide_drop_backup_if_unused/, "void ksu_selinux_hide_drop_backup_if_unused"); print }' kernel/feature/selinux_hide.c > tmp.c && mv tmp.c kernel/feature/selinux_hide.c
+        fi
 
         # Cleanup rejected files so the workspace is pristine for compilation
         find . -name "*.rej" -type f -delete
