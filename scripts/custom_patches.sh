@@ -32,15 +32,15 @@ if [[ "${SU_VARIANT}" == "SukiSU-Ultra" ]]; then
 
         # 2. kernel/core/init.c (Inject SuSFS init/exit routines around SukiSU's stripped core)
         awk '/if \(ksu_late_loaded\) \{/ {
-            print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n\tksu_avc_spoof_init();\n#endif"
+            print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n#endif"
             print; next
         }
         /if \(!getenforce\(\)\) \{/ {
-            print "\t#ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_late_init();\n\t#endif\n\tksu_selinux_hide_drop_backup_if_unused();"
+            print "\tksu_selinux_hide_drop_backup_if_unused();"
             print; next
         }
         /ksu_selinux_hide_exit\(\);/ {
-            print "#ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_exit();\n\tksu_sucompat_exit();\n\tksu_setuid_hook_exit();\n#endif"
+            print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_exit();\n\tksu_setuid_hook_exit();\n#endif"
             print; next
         }
         1' kernel/core/init.c > tmp.c && mv tmp.c kernel/core/init.c
@@ -180,10 +180,10 @@ EOF
         }
         1' kernel/supercall/dispatch.c > tmp.c && mv tmp.c kernel/supercall/dispatch.c
 
-        # 9. kernel/runtime/boot_event.c (Inject input hook static key)
+        # 9. kernel/runtime/boot_event.c (Inject input hook static key and preserve ksu_boot_completed)
         awk '/bool ksu_boot_completed __read_mostly = false;/ {
+            print $0
             print "\n#ifdef CONFIG_KSU_SUSFS\nextern struct static_key_true ksu_is_input_hook_enabled;\n#endif"
-            print "extern void ksu_avc_spoof_late_init(void);"
             next
         }
         1' kernel/runtime/boot_event.c > tmp.c && mv tmp.c kernel/runtime/boot_event.c
