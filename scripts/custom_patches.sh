@@ -51,7 +51,7 @@ if [[ "${SU_VARIANT}" != "KernelSU-Next" ]]; then
                 /kernelsu-objs \+= infra\/file_wrapper\.o/ { skip = 0 }
                 !skip { print }' kernel/Kbuild > tmp.mk && mv tmp.mk kernel/Kbuild
 
-                # 2. kernel/core/init.c (Inject SuSFS init/exit, remove Next-exclusive selinux_hide_init)
+                # 2. kernel/core/init.c (Inject SuSFS init/exit, remove Next-exclusive selinux_hide_init, and feed linker dummies)
                 awk '/ksu_selinux_hide_init\(\);/ { next }
                 /if \(ksu_late_loaded\) \{/ {
                     print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n#endif"
@@ -65,9 +65,17 @@ if [[ "${SU_VARIANT}" != "KernelSU-Next" ]]; then
                     print "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_exit();\n\tksu_setuid_hook_exit();\n#endif"
                     print; next
                 }
+                END {
+                    print "\n#ifdef CONFIG_KSU_SUSFS"
+                    print "void ksu_syscall_hook_init(void) {}"
+                    print "void ksu_syscall_hook_manager_init(void) {}"
+                    print "void ksu_syscall_hook_manager_exit(void) {}"
+                    print "#endif"
+                }
                 1' kernel/core/init.c > tmp.c && mv tmp.c kernel/core/init.c
 
-                # 3. kernel/supercall/supercall.c (Inject only the SuSFS reboot handler)
+                # 3. kernel/supercall/supercall.c (Revert patch corruption and inject only the SuSFS reboot handler)
+                git checkout kernel/supercall/supercall.c || true
                 cat << 'EOF' >> kernel/supercall/supercall.c
 
 #ifdef CONFIG_KSU_SUSFS
@@ -140,7 +148,6 @@ void susfs_set_batch_sid(void) {
 EOF
 
                 # 5. kernel/feature/sucompat.c (Static keys, user paths, chroot protections, and strip sulog)
-                # We dynamically capture indentation with match() to prevent GCC -Wmisleading-indentation errors!
                 awk '
                 /ksu_compat_sulog/ { next }
                 /bool ksu_su_compat_enabled __read_mostly = true;/ {
@@ -212,7 +219,7 @@ EOF
                 }
                 1' kernel/hook/setuid_hook.c > tmp.c && mv tmp.c kernel/hook/setuid_hook.c
 
-                # 8. kernel/supercall/dispatch.c (Update hook mode responses)
+                # 8. kernel/supercall/dispatch.c (Update hook mode responses and feed linker dummies)
                 awk '
                 /#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS/ {
                     if (!done) { print "#ifndef CONFIG_KSU_SUSFS"; print; done=1 } else { print }
@@ -224,6 +231,14 @@ EOF
                     print "\tstrscpy(cmd.mode, \"Hybrid\", sizeof(cmd.mode));"
                     print "#else\n\tstrscpy(cmd.mode, \"Inline\", sizeof(cmd.mode));\n#endif"
                     next
+                }
+                END {
+                    print "\n#ifdef CONFIG_KSU_SUSFS"
+                    print "void ksu_handle_toolkit_reboot(void) {}"
+                    print "void ksu_toolkit_uname_reset(void) {}"
+                    print "void ksu_avc_spoof_disable(void) {}"
+                    print "bool ksu_avc_spoof_enabled = false;"
+                    print "#endif"
                 }
                 1' kernel/supercall/dispatch.c > tmp.c && mv tmp.c kernel/supercall/dispatch.c
 
