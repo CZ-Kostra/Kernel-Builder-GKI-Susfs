@@ -58,67 +58,89 @@ fi
 echo ">>> Searching $REPO for a Release Manager..."
 
 DOWNLOAD_URLS=""
-RUN_ID=""
 
-# 1. Try to find the exact commit hash first
-echo ">>> Checking exact upstream hash: ${UPSTREAM_HASH} (Filtering by push event on ${DEFAULT_BRANCH})"
-RUNS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://api.github.com/repos/$REPO/actions/runs?head_sha=${UPSTREAM_HASH}&status=success&event=push&branch=${DEFAULT_BRANCH}&per_page=100")
+# ==========================================
+# 1. EXACT MATCH (Immune to dependabot spam)
+# ==========================================
+echo ">>> Checking for exact upstream hash: ${UPSTREAM_HASH}"
+EXACT_RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+  "https://api.github.com/repos/$REPO/actions/runs?head_sha=${UPSTREAM_HASH}&status=success&per_page=50")
 
-# Grab ALL run IDs associated with this commit
-RUN_IDS=$(echo "$RUNS_JSON" | jq -r '.workflow_runs[]?.id // empty')
+RUN_IDS=$(echo "$EXACT_RUNS" | jq -r '.workflow_runs[]?.id // empty')
 
-if [ -n "$RUN_IDS" ]; then
-    for ID in $RUN_IDS; do
-        echo ">>> Checking exact-match Run ID: $ID for artifacts..."
-        ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-          "https://api.github.com/repos/$REPO/actions/runs/$ID/artifacts")
-        
-        DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
-          .artifacts[]? 
-          | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
-          | .archive_download_url // empty')
-          
-        if [ -n "$DOWNLOAD_URLS" ]; then
-            echo ">>> Valid Manager artifacts located in Run ID: $ID!"
-            RUN_ID=$ID
-            break
-        fi
-    done
-fi
+for ID in $RUN_IDS; do
+    echo ">>> Checking exact-match Run ID: $ID for artifacts..."
+    ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
+      "https://api.github.com/repos/$REPO/actions/runs/$ID/artifacts")
+    
+    # Only grab the URL if the artifact is explicitly NOT expired
+    DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
+      .artifacts[]? 
+      | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
+      | select(.expired == false)
+      | .archive_download_url // empty')
+      
+    if [ -n "$DOWNLOAD_URLS" ]; then
+        echo ">>> Success! Found unexpired exact Manager artifacts in Run ID: $ID"
+        break
+    fi
+done
 
-# 2. Fallback if the run didn't exist OR if none of its workflows had artifacts
+# ==========================================
+# 2. THE PAGINATED FALLBACK 
+# ==========================================
 if [ -z "$DOWNLOAD_URLS" ]; then
-    echo "[-] No valid artifacts found for exact hash. (Jobs skipped or expired)."
-    echo ">>> Falling back to recent successful runs on branch: $DEFAULT_BRANCH..."
+    echo "[-] Exact match missing or expired. Initiating deep search for the latest valid Manager..."
     
-    # Fetch the last 20 successful runs to comfortably cover multiple commits' worth of workflows
-    RUNS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-      "https://api.github.com/repos/$REPO/actions/runs?branch=${DEFAULT_BRANCH}&status=success&per_page=20")
+    PAGE=1
+    MAX_PAGES=5 # Max 250 runs (Prevents infinite loops on empty repos)
     
-    FALLBACK_RUN_IDS=$(echo "$RUNS_JSON" | jq -r '.workflow_runs[]?.id // empty')
-    
-    for ID in $FALLBACK_RUN_IDS; do
-        echo ">>> Checking fallback Run ID: $ID..."
-        ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-          "https://api.github.com/repos/$REPO/actions/runs/$ID/artifacts")
+    while [ $PAGE -le $MAX_PAGES ]; do
+        echo ">>> Fetching Fallback Page $PAGE..."
+        RECENT_RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          "https://api.github.com/repos/$REPO/actions/runs?status=success&per_page=50&page=$PAGE")
         
-        DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
-          .artifacts[]? 
-          | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
-          | .archive_download_url // empty')
-          
-        if [ -n "$DOWNLOAD_URLS" ]; then
-            echo ">>> Valid artifacts located in fallback Run ID: $ID!"
-            RUN_ID=$ID
-            break
-        fi
+        FALLBACK_IDS=$(echo "$RECENT_RUNS" | jq -r '.workflow_runs[]?.id // empty')
+        
+        # Break out completely if we run out of history
+        if [ -z "$FALLBACK_IDS" ]; then break; fi
+        
+        for ID in $FALLBACK_IDS; do
+            echo "    -> Inspecting fallback Run ID: $ID..."
+            ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/$REPO/actions/runs/$ID/artifacts")
+            
+            # Check if we hit the chronological 90-day wall
+            IS_EXPIRED=$(echo "$ARTIFACTS_JSON" | jq -r '
+              .artifacts[]? 
+              | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)"))
+              | .expired // empty' | head -n 1)
+              
+            if [ "$IS_EXPIRED" == "true" ]; then
+                echo "[-] Hit the 90-day expiration wall. Aborting deep search."
+                break 2 # Breaks out of both the FOR loop and the WHILE loop
+            fi
+            
+            # Look for a valid, unexpired download URL
+            DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
+              .artifacts[]? 
+              | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
+              | select(.expired == false)
+              | .archive_download_url // empty')
+              
+            if [ -n "$DOWNLOAD_URLS" ]; then
+                echo ">>> Success! Found fallback Manager artifacts in Run ID: $ID"
+                break 2 # Breaks out of both loops
+            fi
+        done
+        
+        PAGE=$((PAGE+1))
     done
 fi
 
 # Final sanity check before downloading
 if [ -z "$DOWNLOAD_URLS" ]; then
-    echo "[-] Critical: Failed to locate ANY valid Manager artifacts for $REPO."
+    echo "[-] Critical: Exhausted search. Failed to locate ANY valid Manager artifacts for $REPO."
     exit 1
 fi
 
