@@ -15,7 +15,9 @@ if [[ "${SU_VARIANT}" == "SukiSU-Ultra" ]]; then
     if find . -name "*.rej" | grep -q "."; then
         echo "[-] Patch rejections detected! Initiating awk fixup routine for SukiSU-Ultra..."
 
-        # 1. kernel/Kbuild (Strip Next-specific hooks and apply SuSFS exclusions)
+        # 1. kernel/Kbuild (Revert patch corruption, then apply precise hook exclusions)
+        git checkout kernel/Kbuild
+        
         awk '/kernelsu-objs \+= hook\/lsm_hook\.o/ {
             print "# Core utilities\nifeq ($(strip $(CONFIG_KPROBES)),y)\nkernelsu-objs += hook/lsm_hook.o"
             print "ifeq ($(CONFIG_ARM64),y)\nkernelsu-objs += hook/arm64/patch_memory.o\nelse ifeq ($(CONFIG_X86_64),y)"
@@ -27,7 +29,7 @@ if [[ "${SU_VARIANT}" == "SukiSU-Ultra" ]]; then
             print "kernelsu-objs += hook/setuid_hook.o"
             skip = 1; next
         }
-        /kernelsu-objs \+= hook\/setuid_hook\.o/ { skip = 0; next }
+        /kernelsu-objs \+= infra\/file_wrapper\.o/ { skip = 0 }
         !skip { print }' kernel/Kbuild > tmp.mk && mv tmp.mk kernel/Kbuild
 
         # 2. kernel/core/init.c (Inject SuSFS init/exit routines around SukiSU's stripped core)
@@ -231,3 +233,29 @@ EOF
     cd ../..
 fi
 
+# ==========================================
+# Universal Feature Auto-Enabler
+# ==========================================
+echo ">>> Scanning KernelSU variant for optional features..."
+KSU_KCONFIG="kernel_workspace/KernelSU/kernel/Kconfig"
+GKI_DEFCONFIG_ARM64="kernel_workspace/common/arch/arm64/configs/gki_defconfig"
+GKI_DEFCONFIG_X86="kernel_workspace/common/arch/x86/configs/gki_defconfig"
+
+# Check if the variant's Kconfig natively supports KPM
+if [ -f "$KSU_KCONFIG" ] && grep -q "config KPM" "$KSU_KCONFIG"; then
+    echo ">>> KPM (Kernel Patch Manager) support detected! Auto-enabling CONFIG_KPM in GKI defconfigs..."
+    
+    # Inject into ARM64
+    if [ -f "$GKI_DEFCONFIG_ARM64" ]; then
+        sed -i '/CONFIG_KPM/d' "$GKI_DEFCONFIG_ARM64" # Prevent duplicate entries
+        echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_ARM64"
+    fi
+    
+    # Inject into X86_64 (if building for emulator testing)
+    if [ -f "$GKI_DEFCONFIG_X86" ]; then
+        sed -i '/CONFIG_KPM/d' "$GKI_DEFCONFIG_X86"
+        echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_X86"
+    fi
+else
+    echo ">>> KPM not supported by this variant or Kconfig missing. Skipping..."
+fi
