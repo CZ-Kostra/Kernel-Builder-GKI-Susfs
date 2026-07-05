@@ -1,0 +1,589 @@
+#!/bin/bash
+# scripts/patchfix_ReSukiSU.sh
+
+set -euo pipefail
+MANAGER_DIR="KernelSU"
+
+cd "kernel_workspace/${MANAGER_DIR}"
+
+# ==========================================
+# 0. Upstream SuSFS 6.6-dev Linkage Fix
+# ==========================================
+echo ">>> Fixing SuSFS 6.6-dev static symbol bug in common/ services.c..."
+sed -i -E 's/static[[:space:]]+int[[:space:]]+security_context_to_sid_with_policy/int security_context_to_sid_with_policy/g' ../common/security/selinux/ss/services.c || true
+sed -i -E 's/static[[:space:]]+int[[:space:]]+security_sid_to_context_with_policy/int security_sid_to_context_with_policy/g' ../common/security/selinux/ss/services.c || true
+sed -i -E 's/static[[:space:]]+int[[:space:]]+security_compute_av_user_with_policy/int security_compute_av_user_with_policy/g' ../common/security/selinux/ss/services.c || true
+
+echo ">>> Applying Universal SuSFS 2.20 Patch to ReSukiSU (with whitespace bypass)..."
+patch -p1 -l --no-backup-if-mismatch < ../../patches/2.20_universal_susfs.patch || true
+
+# 1. Silently delete KNOWN patch rejections that our dynamic fixups handle
+rm -f kernel/Kbuild.rej
+rm -f kernel/Kconfig.rej
+rm -f kernel/core/init.c.rej
+rm -f kernel/feature/adb_root.c.rej
+rm -f kernel/feature/adb_root.h.rej
+rm -f kernel/feature/kernel_umount.c.rej
+rm -f kernel/feature/selinux_hide.c.rej
+rm -f kernel/feature/selinux_hide.h.rej
+rm -f kernel/feature/sucompat.c.rej
+rm -f kernel/feature/sucompat.h.rej
+rm -f kernel/hook/setuid_hook.c.rej
+rm -f kernel/hook/setuid_hook.h.rej
+rm -f kernel/hook/syscall_event_bridge.c.rej
+rm -f kernel/policy/allowlist.c.rej
+rm -f kernel/policy/app_profile.c.rej
+rm -f kernel/policy/app_profile.h.rej
+rm -f kernel/runtime/boot_event.c.rej
+rm -f kernel/runtime/ksud.h.rej
+rm -f kernel/runtime/ksud_integration.c.rej
+rm -f kernel/selinux/selinux.c.rej
+rm -f kernel/selinux/selinux.h.rej
+rm -f kernel/sulog/event.c.rej
+rm -f kernel/sulog/event.h.rej
+rm -f kernel/supercall/dispatch.c.rej
+rm -f kernel/supercall/supercall.c.rej
+
+# 2. Check for NEW/UNEXPECTED breakages
+if find . -name "*.rej" | grep -q "."; then
+    echo "[-] WARNING: NEW unexpected patch rejections detected!"
+    echo ">>> Logging unknown rejections for future-proofing..."
+    
+    for rej_file in $(find . -name "*.rej"); do
+        echo "========================================"
+        echo "FILE: $rej_file"
+        echo "========================================"
+        cat "$rej_file"
+        echo ""
+    done
+    
+    # Clean up so Bazel can attempt a run
+    find . -name "*.rej" -type f -delete
+else
+    echo ">>> No unexpected rejections detected. Core format preserved."
+fi
+
+echo ">>> Initiating ReSukiSU dynamic fixup routine..."
+
+# ==========================================
+# A. Core Architecture & Init Mapping
+# ==========================================
+
+# 1. kernel/Kconfig
+git checkout kernel/Kconfig || true
+sed -i 's/depends on KPROBES && EXT4_FS/depends on KPROBES || SUSFS/g' kernel/Kconfig
+
+# 2. kernel/Kbuild
+git checkout kernel/Kbuild || true
+
+# Neutralize ReSukiSU-specific Bazel sandbox traps that bypassed the global injector
+sed -i '/You should use .* as a git submodule/d' kernel/Kbuild
+sed -i '/Can.t find .* git submodule/d' kernel/Kbuild
+sed -i '/If you are using bazel to build this kernel/d' kernel/Kbuild
+sed -i '/Please go to Kbuild and change KSU_SRC/d' kernel/Kbuild
+
+# Proceed with SuSFS integration mapping
+awk '/kernelsu-objs \+= hook\/lsm_hook\.o/ {
+    print "# Core utilities\nifeq ($(strip $(CONFIG_KPROBES)),y)\nkernelsu-objs += hook/lsm_hook.o"
+    print "ifeq ($(CONFIG_ARM64),y)\nkernelsu-objs += hook/arm64/patch_memory.o\nelse ifeq ($(CONFIG_X86_64),y)"
+    print "kernelsu-objs += hook/x86_64/patch_memory.o\nendif\nendif\n\n# Hooks (excluded for SuSFS)"
+    print "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\nifeq ($(strip $(CONFIG_KPROBES)),y)"
+    print "kernelsu-objs += hook/syscall_event_bridge.o\nkernelsu-objs += hook/syscall_hook_manager.o\nkernelsu-objs += hook/tp_marker.o"
+    print "ifeq ($(CONFIG_ARM64),y)\nkernelsu-objs += hook/arm64/syscall_hook.o\nelse ifeq ($(CONFIG_X86_64),y)"
+    print "kernelsu-objs += hook/x86_64/syscall_hook.o\nendif\nendif\nendif\n"
+    print "kernelsu-objs += hook/setuid_hook.o"
+    skip = 1; next
+}
+/kernelsu-objs \+= infra\/file_wrapper\.o/ { skip = 0 }
+!skip { print }' kernel/Kbuild > tmp.mk && mv tmp.mk kernel/Kbuild
+
+# 3. kernel/core/init.c
+git checkout kernel/core/init.c || true
+awk '/int __init kernelsu_init\(void\)/ {
+    print; getline; print
+    print "#ifdef CONFIG_KSU_SUSFS\n\tsusfs_init();\n#endif"
+    next
+}
+/ksu_syscall_hook_init\(\);/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)\n\tksu_syscall_hook_init();\n#endif"
+    next
+}
+/ksu_lsm_hook_init\(\);/ {
+    print "#ifndef CONFIG_KSU_SUSFS\n#ifdef CONFIG_KPROBES\n\tksu_lsm_hook_init();\n#endif\n#endif"
+    next
+}
+/ksu_selinux_hide_init\(\);/ {
+    print
+    print "\tksu_adb_root_init();\n\tksu_supercalls_init();\n\n#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();\n\tksu_setuid_hook_init();\n\tksu_avc_spoof_init();\n#endif"
+    next
+}
+/ksu_adb_root_init\(\);/ { next }
+/ksu_supercalls_init\(\);/ { next }
+/ksu_syscall_hook_manager_init\(\);/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)\n\t\tksu_syscall_hook_manager_init();\n#endif"
+    next
+}
+/ksu_selinux_hide_drop_backup_if_unused\(\);/ { next }
+/if \(!getenforce\(\)\)/ {
+    print "#ifdef CONFIG_KSU_SUSFS\n\t\tksu_avc_spoof_late_init();\n#endif\n\t\tksu_selinux_hide_drop_backup_if_unused();\n"
+    print
+    next
+}
+/ksu_syscall_hook_manager_exit\(\);/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)\n\tksu_syscall_hook_manager_exit();\n#endif"
+    next
+}
+/ksu_allowlist_exit\(\);/ {
+    print
+    print "\n#ifdef CONFIG_KSU_SUSFS\n\tksu_avc_spoof_exit();\n\tksu_sucompat_exit();\n\tksu_setuid_hook_exit();\n#endif"
+    next
+}
+/ksu_lsm_hook_exit\(\);/ {
+    print "#ifndef CONFIG_KSU_SUSFS\n#ifdef CONFIG_KPROBES\n\tksu_lsm_hook_exit();\n#endif\n#endif"
+    next
+}
+1' kernel/core/init.c > tmp.c && mv tmp.c kernel/core/init.c
+
+# 4. kernel/supercall/dispatch.c
+git checkout kernel/supercall/dispatch.c || true
+awk '/ksu_mark_running_process\(\);/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)\n\t\tksu_mark_running_process();\n#endif"
+    next
+}
+/#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS/ {
+    if (!done) { print "#ifndef CONFIG_KSU_SUSFS"; print; done=1 } else { print }
+    next
+}
+/strscpy\(cmd\.mode, "Kprobes", sizeof\(cmd\.mode\)\);/ {
+    print; getline; print
+    print "#elif defined(CONFIG_HAVE_SYSCALL_TRACEPOINTS) || defined(CONFIG_KPROBES)"
+    print "\tstrscpy(cmd.mode, \"Hybrid\", sizeof(cmd.mode));"
+    print "#else\n\tstrscpy(cmd.mode, \"Inline\", sizeof(cmd.mode));\n#endif"
+    next
+}
+END {
+    print "\n#ifdef CONFIG_KSU_SUSFS"
+    print "int ksu_handle_toolkit_reboot(int magic2, unsigned int cmd, void __user *arg) { return 0; }"
+    print "void ksu_toolkit_uname_reset(void) {}"
+    print "void ksu_avc_spoof_disable(void) {}"
+    print "bool ksu_avc_spoof_enabled = false;"
+    print "#endif"
+}
+1' kernel/supercall/dispatch.c > tmp.c && mv tmp.c kernel/supercall/dispatch.c
+
+# 5. kernel/supercall/supercall.c
+git checkout kernel/supercall/supercall.c || true
+cat << 'EOF' >> kernel/supercall/supercall.c
+
+#ifdef CONFIG_KSU_SUSFS
+int ksu_supercall_reboot_handler(void __user **arg)
+{
+    struct ksu_install_fd_tw *tw;
+    tw = kzalloc(sizeof(*tw), GFP_KERNEL);
+    if (!tw) return 0;
+    tw->outp = (int __user *)(*arg);
+    tw->cb.func = ksu_install_fd_tw_func;
+    if (task_work_add(current, &tw->cb, TWA_RESUME)) {
+        kfree(tw);
+        pr_warn("install fd add task_work failed\n");
+    }
+    return 0;
+}
+#endif
+EOF
+
+# ==========================================
+# B. Policy & Runtime Initialization
+# ==========================================
+
+# 1. kernel/policy/allowlist.c
+git checkout kernel/policy/allowlist.c || true
+awk '/ksu_mark_running_process\(\);/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)\n\t\tksu_mark_running_process();\n#endif"
+    next
+}
+1' kernel/policy/allowlist.c > tmp.c && mv tmp.c kernel/policy/allowlist.c
+
+# 2. kernel/policy/app_profile.c
+git checkout kernel/policy/app_profile.c || true
+awk '/if \(profile->allow_su && !p->profile\.allow_su\) \{/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)"
+    print
+    while (getline > 0) {
+        print
+        if ($0 ~ /ksu_unmark_process_by_uid/) {
+            getline; print; print "#endif"; break
+        }
+    }
+    next
+}
+/if \(p->allow_su\) \{/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)"
+    print
+    while (getline > 0) {
+        print
+        if ($0 ~ /ksu_unmark_process_by_uid/) {
+            getline; print; print "#endif"; break
+        }
+    }
+    next
+}
+/if \(p->profile\.allow_su\) \{/ {
+    print "#if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)"
+    print
+    while (getline > 0) {
+        print
+        if ($0 ~ /ksu_unmark_process_by_uid/) {
+            getline; print; print "#endif"; break
+        }
+    }
+    next
+}
+1' kernel/policy/app_profile.c > tmp.c && mv tmp.c kernel/policy/app_profile.c
+
+# 3. kernel/runtime/boot_event.c
+git checkout kernel/runtime/boot_event.c || true
+awk '/#include "feature\/selinux_hide\.h"/ { next }
+/#include <linux\/printk\.h>/ {
+    print "#include <linux/printk.h>"
+    print "#include <linux/jump_label.h>\n"
+    print "#include \"feature/selinux_hide.h\""
+    next
+}
+/bool ksu_boot_completed __read_mostly = false;/ {
+    print $0
+    print "\n#ifdef CONFIG_KSU_SUSFS\nextern struct static_key_true ksu_is_input_hook_enabled;\n#endif"
+    next
+}
+/ksu_stop_input_hook_runtime\(\);/ {
+    print "#ifdef CONFIG_KSU_SUSFS"
+    print "    if (static_key_enabled(&ksu_is_input_hook_enabled)) {"
+    print "        static_branch_disable(&ksu_is_input_hook_enabled);"
+    print "        pr_info(\"ksu_is_input_hook is disabled\\n\");"
+    print "    }"
+    print "#else"
+    print "    ksu_stop_input_hook_runtime();"
+    print "#endif"
+    next
+}
+1' kernel/runtime/boot_event.c > tmp.c && mv tmp.c kernel/runtime/boot_event.c
+
+# ==========================================
+# C. Runtime & Hooks Mapping
+# ==========================================
+
+# 1. kernel/runtime/ksud_integration.c
+git checkout kernel/runtime/ksud_integration.c || true
+awk '/struct user_arg_ptr argv = / {
+    print $0 " (void)argv;"
+    next
+}
+/static struct work_struct stop_input_hook_work;/ {
+    print "static struct work_struct stop_input_hook_work __attribute__((unused));"
+    next
+}
+1' kernel/runtime/ksud_integration.c > tmp.c && mv tmp.c kernel/runtime/ksud_integration.c
+
+# 2. kernel/hook/setuid_hook.c
+git checkout kernel/hook/setuid_hook.c || true
+awk '/if \(current->seccomp\.mode == SECCOMP_MODE_FILTER/,/}/ {
+    if ($0 ~ /}/) print "\t\tdisable_seccomp();"
+    next
+}
+1' kernel/hook/setuid_hook.c > tmp.c && mv tmp.c kernel/hook/setuid_hook.c
+
+# 3. kernel/hook/syscall_event_bridge.c
+git checkout kernel/hook/syscall_event_bridge.c || true
+awk '/uid_t old_uid = current_uid\(\)\.val;/ {
+    print $0 " (void)old_uid;"
+    next
+}
+1' kernel/hook/syscall_event_bridge.c > tmp.c && mv tmp.c kernel/hook/syscall_event_bridge.c
+
+# 4. kernel/feature/kernel_umount.c
+git checkout kernel/feature/kernel_umount.c || true
+awk '/bool is_zygote_child = is_zygote/ { print "#ifndef CONFIG_KSU_SUSFS"; print; next }
+/pr_info\("handle umount ignore non zygote child/ { print; getline; print; getline; print; print "#endif"; next }
+/if \(ksu_register_feature_handler/ { print "\tksu_register_feature_handler(&kernel_umount_handler);"; getline; getline; next }
+1' kernel/feature/kernel_umount.c > tmp.c && mv tmp.c kernel/feature/kernel_umount.c
+
+# ==========================================
+# D. SELinux, SuCompat, and Logging
+# ==========================================
+
+# 1. Clean up "stubborn" files where the stock ReSukiSU logic already functions perfectly
+git checkout kernel/feature/adb_root.c || true
+git checkout kernel/feature/adb_root.h || true
+git checkout kernel/feature/selinux_hide.c || true
+git checkout kernel/feature/selinux_hide.h || true
+
+# 2. kernel/selinux/selinux.c
+git checkout kernel/selinux/selinux.c || true
+cat << 'EOF' >> kernel/selinux/selinux.c
+
+#ifdef CONFIG_KSU_SUSFS
+u32 susfs_zygote_sid = 0;
+u32 susfs_ksu_sid = 0;
+u32 susfs_init_sid = 0;
+u32 susfs_priv_app_sid = 0;
+
+#define KERNEL_INIT_DOMAIN "u:r:init:s0"
+#define KERNEL_ZYGOTE_DOMAIN "u:r:zygote:s0"
+#define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
+
+static inline void susfs_set_sid(const char *secctx_name, u32 *out_sid) {
+    int err;
+    if (!secctx_name || !out_sid) return;
+    err = security_secctx_to_secid(secctx_name, strlen(secctx_name), out_sid);
+    if (!err) pr_info("sid '%u' is set for secctx_name '%s'\n", *out_sid, secctx_name);
+}
+
+bool susfs_is_sid_equal(const struct cred *cred, u32 sid2) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
+    const struct task_security_struct *tsec = selinux_cred(cred);
+#else
+    const struct cred_security_struct *tsec = selinux_cred(cred);
+#endif
+    if (!tsec) return false;
+    return tsec->sid == sid2;
+}
+
+u32 susfs_get_sid_from_name(const char *secctx_name) {
+    u32 out_sid = 0;
+    if (!secctx_name) return 0;
+    security_secctx_to_secid(secctx_name, strlen(secctx_name), &out_sid);
+    return out_sid;
+}
+
+u32 susfs_get_current_sid(void) { return current_sid(); }
+bool susfs_is_current_zygote_domain(void) { return unlikely(current_sid() == susfs_zygote_sid); }
+bool susfs_is_current_ksu_domain(void) { return unlikely(current_sid() == susfs_ksu_sid); }
+bool susfs_is_current_init_domain(void) { return unlikely(current_sid() == susfs_init_sid); }
+
+void susfs_set_batch_sid(void) {
+    susfs_set_sid(KERNEL_ZYGOTE_DOMAIN, &susfs_zygote_sid);
+    susfs_set_sid(KERNEL_SU_CONTEXT, &susfs_ksu_sid);
+    susfs_set_sid(KERNEL_INIT_DOMAIN, &susfs_init_sid);
+    susfs_set_sid(KERNEL_PRIV_APP_DOMAIN, &susfs_priv_app_sid);
+}
+#endif
+EOF
+
+# 3. kernel/selinux/selinux.h
+git checkout kernel/selinux/selinux.h || true
+cat << 'EOF' >> kernel/selinux/selinux.h
+
+#ifdef CONFIG_KSU_SUSFS
+void susfs_set_batch_sid(void);
+u32 susfs_get_sid_from_name(const char *secctx_name);
+u32 susfs_get_current_sid(void);
+bool susfs_is_current_zygote_domain(void);
+bool susfs_is_current_ksu_domain(void);
+bool susfs_is_current_init_domain(void);
+bool susfs_is_sid_equal(const struct cred *cred, u32 sid2);
+#endif
+EOF
+
+# 4. kernel/feature/sucompat.h
+git checkout kernel/feature/sucompat.h || true
+awk '
+BEGIN {
+    print "struct pt_regs;"
+    print "struct user_arg_ptr;"
+}
+{ print }
+END {
+    print "long ksu_handle_stat_sucompat(int orig_nr, struct pt_regs *regs);"
+    print "long ksu_handle_faccessat_sucompat(int orig_nr, struct pt_regs *regs);"
+    print "long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, struct pt_regs *regs);"
+}
+' kernel/feature/sucompat.h > tmp.h && mv tmp.h kernel/feature/sucompat.h
+
+# 5. kernel/feature/sucompat.c
+git checkout kernel/feature/sucompat.c || true
+awk '
+/ksu_compat_sulog/ { next }
+/bool ksu_su_compat_enabled __read_mostly = true;/ {
+    print "static const char sh_path[] = SH_PATH;\nstatic const char su_path[] = SU_PATH;\nstatic const char ksud_path[] = KSUD_PATH;\n\nDEFINE_STATIC_KEY_TRUE(ksu_su_compat_enabled);"
+    next
+}
+/static int su_compat_feature_get/,/}/ {
+    if ($0 ~ /}/) { print "static int su_compat_feature_get(u64 *value)\n{\n\tif (static_key_enabled(&ksu_su_compat_enabled))\n\t\t*value = 1;\n\telse\n\t\t*value = 0;\n\treturn 0;\n}" }
+    next
+}
+/static int su_compat_feature_set/,/}/ {
+    if ($0 ~ /}/) { print "static int su_compat_feature_set(u64 value)\n{\n\tbool enable = value != 0;\n\tif (enable)\n\t\tstatic_branch_enable(&ksu_su_compat_enabled);\n\telse\n\t\tstatic_branch_disable(&ksu_su_compat_enabled);\n\tpr_info(\"su_compat: set to %d\\n\", enable);\n\treturn 0;\n}" }
+    next
+}
+/static char __user \*ksud_user_path/,/}/ {
+    if ($0 ~ /}/) { print "static char __user *ksud_user_path(void)\n{\n\tstatic const char ksud_path_local[] = KSUD_PATH;\n\treturn userspace_stack_buffer(ksud_path_local, sizeof(ksud_path_local));\n}" }
+    next
+}
+/long ksu_handle_faccessat_sucompat/ { in_fac = 1; in_stat = 0; }
+/long ksu_handle_stat_sucompat/ { in_stat = 1; in_fac = 0; }
+/long ksu_handle_execve_sucompat/ { in_stat = 0; in_fac = 0; }
+/if \(unlikely\(!memcmp\(path, su_path, sizeof\(su_path\)\)\)\) \{/ {
+    match($0, /^[ \t]*/)
+    indent = substr($0, RSTART, RLENGTH)
+    print
+    if (in_fac) {
+        print indent "    if (current_chrooted()) {"
+        print indent "        pr_err(\"ksu: su found but NOT allowed in chroot\\n\");"
+        print indent "        goto do_orig_facessat;"
+        print indent "    }"
+    } else if (in_stat) {
+        print indent "    if (current_chrooted()) {"
+        print indent "        pr_err(\"ksu: su found but NOT allowed in chroot\\n\");"
+        print indent "        goto do_orig_stat;"
+        print indent "    }"
+    }
+    next
+}
+/if \(likely\(memcmp\(path, su_path, sizeof\(su_path\)\)\)\)/ {
+    match($0, /^[ \t]*/)
+    indent = substr($0, RSTART, RLENGTH)
+    print; getline; print
+    print ""
+    print indent "if (current_chrooted()) {"
+    print indent "    pr_err(\"ksu: su found but NOT allowed in chroot\\n\");"
+    print indent "    goto do_orig_execve;"
+    print indent "}"
+    next
+}
+1' kernel/feature/sucompat.c > tmp.c && mv tmp.c kernel/feature/sucompat.c
+
+# 6. kernel/runtime/ksud.h
+git checkout kernel/runtime/ksud.h || true
+cat << 'EOF' >> kernel/runtime/ksud.h
+
+#ifdef CONFIG_KSU_SUSFS
+int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+                             struct user_arg_ptr *argv,
+                             struct user_arg_ptr *envp, int *flags);
+#endif
+EOF
+
+# 7. kernel/sulog/event.c
+git checkout kernel/sulog/event.c || true
+cat << 'EOF' >> kernel/sulog/event.c
+
+#ifdef CONFIG_KSU_SUSFS
+static __u32 ksu_sulog_copy_filename_kernel(const char *filename, char *dst, __u32 dst_len)
+{
+	if (!dst_len) return 0;
+	if (!filename) return ksu_sulog_copy_empty_string(dst);
+	strscpy(dst, filename, dst_len);
+	return strlen(dst) + 1;
+}
+
+static struct ksu_sulog_pending_event *ksu_sulog_capture_kernel(__u16 event_type, const char *filename, const char __user *const __user *argv_user, gfp_t gfp)
+{
+	struct ksu_sulog_pending_event *pending = NULL;
+	struct ksu_sulog_event *event;
+	void *payload = NULL;
+	__u32 payload_len, filename_len, argv_len, remaining;
+	char *filename_buf, *argv_buf;
+
+	if (!ksu_sulog_is_enabled()) return NULL;
+	pending = kzalloc(sizeof(*pending), gfp);
+	if (!pending) goto out_drop;
+	payload = kzalloc(KSU_SULOG_MAX_PAYLOAD_LEN, gfp);
+	if (!payload) goto out_free_pending;
+
+	event = payload;
+	ksu_sulog_fill_task_info(event, event_type, 0);
+	remaining = KSU_SULOG_MAX_PAYLOAD_LEN - sizeof(*event);
+	filename_buf = (char *)payload + sizeof(*event);
+	filename_len = ksu_sulog_copy_filename_kernel(filename, filename_buf, min(remaining, KSU_SULOG_MAX_FILENAME_LEN));
+	if (!filename_len) goto out_free_payload;
+
+	remaining -= filename_len;
+	argv_buf = filename_buf + filename_len;
+	argv_len = ksu_sulog_flatten_argv(argv_user, argv_buf, remaining);
+	if (!argv_len) goto out_free_payload;
+
+	event->filename_len = filename_len;
+	event->argv_len = argv_len;
+
+	if (check_add_overflow((__u32)sizeof(*event), filename_len, &payload_len) ||
+		check_add_overflow(payload_len, argv_len, &payload_len))
+		goto out_free_payload;
+
+	pending->event_type = event_type;
+	pending->payload = payload;
+	pending->payload_len = payload_len;
+	return pending;
+
+out_free_payload:
+	kfree(payload);
+out_free_pending:
+	kfree(pending);
+out_drop:
+	ksu_event_queue_drop(&sulog_queue);
+	return NULL;
+}
+
+struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve_kernel(const char *filename, const char __user *const __user *argv_user, gfp_t gfp)
+{
+    return ksu_sulog_capture_kernel(KSU_SULOG_EVENT_ROOT_EXECVE, filename, argv_user, gfp);
+}
+
+struct ksu_sulog_pending_event *ksu_sulog_capture_sucompat_kernel(const char *filename, const char __user *const __user *argv_user, gfp_t gfp)
+{
+	return ksu_sulog_capture_kernel(KSU_SULOG_EVENT_SUCOMPAT, filename, argv_user, gfp);
+}
+#endif
+EOF
+
+# 8. kernel/sulog/event.h
+git checkout kernel/sulog/event.h || true
+cat << 'EOF' >> kernel/sulog/event.h
+
+#ifdef CONFIG_KSU_SUSFS
+struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve_kernel(const char *filename, const char __user *const __user *argv_user, gfp_t gfp);
+struct ksu_sulog_pending_event *ksu_sulog_capture_sucompat_kernel(const char *filename, const char __user *const __user *argv_user, gfp_t gfp);
+#endif
+EOF
+
+# 9. Linkage Fixes for remaining headers
+git checkout kernel/policy/app_profile.h || true
+sed -i 's/static int ksu_set_app_profile/int ksu_set_app_profile/g' kernel/policy/app_profile.h
+
+git checkout kernel/hook/setuid_hook.h || true
+cat << 'EOF' >> kernel/hook/setuid_hook.h
+
+#ifdef CONFIG_KSU_SUSFS
+int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);
+#endif
+EOF
+
+# ==========================================
+# E. Linkage & Android 16 Compliance Fixes
+# ==========================================
+
+echo ">>> Applying linkage and compatibility fixes..."
+
+if [ -f kernel/feature/selinux_hide.c ]; then
+    # 1. Clean up ReSukiSU developer typos caused by a bad Find & Replace
+    sed -i 's/__maybe_int/int/g' kernel/feature/selinux_hide.c
+    sed -i 's/__maybe_void/void/g' kernel/feature/selinux_hide.c
+    
+    # 2. Fix drop_backup_if_unused linkage
+    sed -i 's/static void ksu_selinux_hide_drop_backup_if_unused/void ksu_selinux_hide_drop_backup_if_unused/g' kernel/feature/selinux_hide.c
+    
+    # 3. Standard linkage fixes for the security functions (if not already stripped)
+    sed -i 's/static int security_context_to_sid_with_policy/int security_context_to_sid_with_policy/g' kernel/feature/selinux_hide.c
+    sed -i 's/static int security_sid_to_context_with_policy/int security_sid_to_context_with_policy/g' kernel/feature/selinux_hide.c
+    sed -i 's/static void security_compute_av_user_with_policy/void security_compute_av_user_with_policy/g' kernel/feature/selinux_hide.c
+    
+    echo ">>> SELinux linkage fixes and typo cleanups applied!"
+fi
+
+if [ -f kernel/kpm/super_access.c ]; then
+    # 3. Fix Android 16 / 6.12 cb_mutex removal in KPM
+    sed -i 's/DEFINE_MEMBER(netlink_kernel_cfg, cb_mutex)/#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)\n    DEFINE_MEMBER(netlink_kernel_cfg, cb_mutex)\n#endif/g' kernel/kpm/super_access.c
+    echo ">>> KPM 6.12 cb_mutex fix applied!"
+fi
+
+echo ">>> ReSukiSU dynamic fixups applied successfully!"
+cd ../..
