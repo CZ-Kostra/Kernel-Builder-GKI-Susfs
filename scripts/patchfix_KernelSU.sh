@@ -7,7 +7,7 @@ MANAGER_DIR="KernelSU"
 cd "kernel_workspace/${MANAGER_DIR}"
 
 echo ">>> Applying Universal SuSFS 2.20 Patch to Mainline KernelSU..."
-patch -p1 --no-backup-if-mismatch < ../../patches/10_enable_susfs_for_ksu.patch || true
+patch -p1 --no-backup-if-mismatch < ../../patches/ksu_susfs.patch || true
 
 if find . -name "*.rej" | grep -q "."; then
     echo "[-] Patch rejections detected for KernelSU!"
