@@ -7,8 +7,8 @@ MANAGER_DIR="KernelSU-Next"
 cd "kernel_workspace/${MANAGER_DIR}"
 
 
-echo ">>> Applying Universal SuSFS 2.20 Patch to KernelSU-Next..."
-patch -p1 --no-backup-if-mismatch < ../../patches/12.20_universal_susfs.patch || true
+echo ">>> Applying Updated SuSFS 2.20 Patch to KernelSU-Next..."
+patch -p1 --no-backup-if-mismatch < ../../patches/next_susfs.patch || true
 
 # Future-proofing: Catch any rejections from upstream merges
 if find . -name "*.rej" | grep -q "."; then
