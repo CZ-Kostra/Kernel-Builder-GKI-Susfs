@@ -9,9 +9,9 @@ cd "kernel_workspace/${MANAGER_DIR}"
 echo ">>> Applying Universal SuSFS 2.20 Patch to Mainline KernelSU..."
 patch -p1 --no-backup-if-mismatch < ../../patches/ksu_susfs.patch || true
 
-# Silence Clang -Wpointer-bool-conversion errors for 6.6 extern functions
-sed -i 's/if (security_dump_masked_av_fn)/if (\&security_dump_masked_av_fn)/g' kernel/feature/selinux_hide.c
-sed -i 's/if (context_struct_compute_av_fn)/if (\&context_struct_compute_av_fn)/g' kernel/feature/selinux_hide.c
+# Silence Clang -Wpointer-bool-conversion by bypassing the redundant runtime checks
+sed -i 's/if (security_dump_masked_av_fn)/if (1)/g' kernel/feature/selinux_hide.c
+sed -i 's/if (context_struct_compute_av_fn)/if (1)/g' kernel/feature/selinux_hide.c
 
 if find . -name "*.rej" | grep -q "."; then
     echo "[-] Patch rejections detected for KernelSU!"
