@@ -16,11 +16,12 @@ echo ">>> Target Kernel: $K_MAJ.$K_MIN"
 # 6.6 AND HIGHER ADAPTATIONS (Android 15+)
 # ---------------------------------------------------------
 if [ "$K_MAJ" -eq 6 ] && [ "$K_MIN" -ge 6 ]; then
-    echo ">>> Applying 6.6+ specific API shifts and compiler fixes..."
+    echo ">>> Manually exposing 6.6 SELinux functions for SuSFS linking..."
     
-    # Silence Clang -Wpointer-bool-conversion for extern functions in selinux_hide.c
-    sed -i 's/if (.*security_dump_masked_av_fn.*)/if (1)/g' kernel/feature/selinux_hide.c
-    sed -i 's/if (.*context_struct_compute_av_fn.*)/if (1)/g' kernel/feature/selinux_hide.c
+    # Strip 'static' scope from functions required by selinuxfs.c
+    sed -i 's/static int security_context_to_sid_with_policy/int security_context_to_sid_with_policy/g' kernel/feature/selinux_hide.c
+    sed -i 's/static int security_sid_to_context_with_policy/int security_sid_to_context_with_policy/g' kernel/feature/selinux_hide.c
+    sed -i 's/static void security_compute_av_user_with_policy/void security_compute_av_user_with_policy/g' kernel/feature/selinux_hide.c
 fi
 
 # ---------------------------------------------------------

@@ -4,12 +4,15 @@ run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
 on:
   workflow_dispatch:
     inputs:      
-      ksu_branch_ref:
-        description: 'Repo Branch'
-        required: false
-        default: 'ci-runner'
-        type: string       
-      
+      build_channel:
+        description: 'Build Channel'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - canary
+
       build_name:
         description: "Build Name"
         required: true
@@ -28,12 +31,11 @@ on:
         type: choice
         options:
           - KernelSU-Next
-          - KernelSU
           - SukiSU-Ultra
           - ReSukiSU
                  
       enable_ksu_susfs:
-        description: "Integrate KernelSU and SUSFS?"
+        description: "Integrate Root Manager and SUSFS?"
         required: false
         type: boolean
         default: true
@@ -49,7 +51,6 @@ on:
         required: false
         type: boolean
         default: false
-
         
       ota_url:
         description: "Full OTA ZIP URL (blank produces AK3 zip)"
@@ -118,7 +119,7 @@ jobs:
       - name: Resolve Manifest Branch from Database
         id: resolve_manifest
         run: |
-          TARGET_RAW="${{ github.event.inputs.target_version }}"
+          TARGET_RAW="${{ inputs.target_version }}"
           echo ">>> Raw input received: $TARGET_RAW"
           
           # Regex to extract only the first instance of an X.Y.Z version format
@@ -185,6 +186,35 @@ jobs:
           echo "MANIFEST_BRANCH=${MANIFEST_BRANCH}" >> $GITHUB_ENV
           echo "MANIFEST_URL=https://android.googlesource.com/kernel/manifest" >> $GITHUB_ENV
 
+      - name: Configure Build Channels
+        if: inputs.enable_ksu_susfs == true
+        run: |
+          echo "=== Configuring Build Channel: ${{ inputs.build_channel }} ==="
+          
+          if [ "${{ inputs.build_channel }}" == "canary" ]; then
+            
+            if [ "${{ inputs.root_manager }}" == "KernelSU-Next" ]; then
+               echo ">>> Routing KernelSU-Next to Automated Dynamic Transplant..."
+               echo "USE_DYNAMIC_TRANSPLANT=true" >> $GITHUB_ENV
+               echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
+               echo "KSU_VARIANT_REPO_URL=" >> $GITHUB_ENV
+               echo "KSU_VARIANT_REF=" >> $GITHUB_ENV
+            else
+               echo ">>> Routing ${{ inputs.root_manager }} to shoey63 Canary fork..."
+               echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
+               echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
+               echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
+               echo "KSU_VARIANT_REF=canary" >> $GITHUB_ENV
+            fi
+            
+          else
+            echo ">>> Routing to Safe Fallback Forks (Stable)..."
+            echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
+            echo "SUSFS_REPO_URL=https://gitlab.com/shoey63/susfs4ksu.git" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REF=stable" >> $GITHUB_ENV
+          fi
+
       - name: Setup repo tool
         run: |
           mkdir -p "$HOME/bin"
@@ -209,9 +239,9 @@ jobs:
       - name: Integrate Root Manager (${{ inputs.root_manager }})
         if: inputs.enable_ksu_susfs == true
         env:
-          KSU_VARIANT_REPO_URL: https://github.com/shoey63/${{ inputs.root_manager }}.git
-          KSU_VARIANT_REF: ${{ inputs.ksu_branch_ref }}
-          KSU_VARIANT_HOOK_MODE: ""
+          KSU_VARIANT_REPO_URL: ${{ env.KSU_VARIANT_REPO_URL }}
+          KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
+          USE_DYNAMIC_TRANSPLANT: ${{ env.USE_DYNAMIC_TRANSPLANT }}
         run: |
           bash ./scripts/inject_ksu_variant.sh "${{ inputs.root_manager }}"
 
@@ -239,7 +269,7 @@ jobs:
       - name: Integrate SUSFS common-side
         if: inputs.enable_ksu_susfs == true
         env:
-          SUSFS_NEXT_URL: https://gitlab.com/shoey63/susfs4ksu.git
+          SUSFS_NEXT_URL: ${{ env.SUSFS_REPO_URL }}
           SUSFS_NEXT_REF: ${{ env.SUSFS_BRANCH }}
         run: |
           bash ./scripts/integrate_susfs_next.sh

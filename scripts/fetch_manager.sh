@@ -38,21 +38,15 @@ fi
 # ROOT MANAGER FETCH LOGIC (Artifacts API)
 # ==========================================
 echo ">>> Mapping selected variant to upstream repository..."
-if [[ "${VARIANT}" == "KernelSU" ]]; then
-    REPO="tiann/KernelSU"
-    DEFAULT_BRANCH="main"
-elif [[ "${VARIANT}" == "KernelSU-Next" ]]; then
+if [[ "${VARIANT}" == "KernelSU-Next" ]]; then
     REPO="KernelSU-Next/KernelSU-Next"
-    DEFAULT_BRANCH="dev"
 elif [[ "${VARIANT}" == "SukiSU-Ultra" ]]; then
     REPO="SukiSU-Ultra/SukiSU-Ultra"
-    DEFAULT_BRANCH="main"
 elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
     REPO="ReSukiSU/ReSukiSU"
-    DEFAULT_BRANCH="main"
 else
-    REPO="tiann/KernelSU"
-    DEFAULT_BRANCH="main"
+    echo "[-] Error: Unsupported Variant '${VARIANT}'. Vanilla KernelSU is deprecated." >&2
+    exit 1
 fi
 
 echo ">>> Searching $REPO for a Release Manager..."
@@ -166,9 +160,3 @@ find manager_apk/ -type f \( -name "*x86*.apk" -o -name "*armeabi-v7a*.apk" -o -
 
 echo ">>> Manager(s) successfully staged for final upload!"
 ls -1 manager_apk/
-
-
-    
-
-
-
