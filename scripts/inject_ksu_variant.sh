@@ -62,19 +62,7 @@ if [[ "${VARIANT}" == "KernelSU-Next" ]] && [[ "${USE_DYNAMIC_TRANSPLANT}" == "t
         echo "  -> Transplanting: $COMMIT_TITLE"
         git cherry-pick "$commit"
     done
-    
-    echo ">>> 7. Applying GKI 6.6 SELinux Compiler Fixes..."
-    SELINUX_FILE="kernel/feature/selinux_hide.c"
-    if [ -f "$SELINUX_FILE" ]; then
-        sed -i 's/static int security_context_to_sid_with_policy/int security_context_to_sid_with_policy/g' "$SELINUX_FILE"
-        sed -i 's/static int security_sid_to_context_with_policy/int security_sid_to_context_with_policy/g' "$SELINUX_FILE"
-        sed -i 's/static void security_compute_av_user_with_policy/void security_compute_av_user_with_policy/g' "$SELINUX_FILE"
-        
-        # Commit the dynamic fix so the working tree is clean for Bazel
-        git add "$SELINUX_FILE"
-        git commit -m "fix: dynamically un-trap SELinux prototypes for Bazel GKI 6.6"
-    fi
-    
+
     echo ">>> Dynamic SuSFS integration complete!"
 
     # Step back out to the main workspace
