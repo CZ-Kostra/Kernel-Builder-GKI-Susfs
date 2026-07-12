@@ -50,7 +50,7 @@ if [[ "${VARIANT}" == "KernelSU-Next" ]] && [[ "${USE_DYNAMIC_TRANSPLANT}" == "t
     MERGE_BASE=$(git merge-base HEAD pershoot/dev-susfs)
 
     echo ">>> 5. Generating dynamic commit list (Filtering out CI hacks)..."
-    VALID_COMMITS=$(git log --reverse --format="%H %s" ${MERGE_BASE}..pershoot/dev-susfs | grep -v -i -E "setup:|Omit this repo" | awk '{print $1}')
+    VALID_COMMITS=$(git log --reverse --format="%H %s" ${MERGE_BASE}..pershoot/dev-susfs | grep -v -i -E "setup:|manager" | awk '{print $1}')
 
     echo ">>> Configuring dummy Git identity for transplant operations..."
     git config --global user.email "runner@github.actions"
@@ -62,6 +62,19 @@ if [[ "${VARIANT}" == "KernelSU-Next" ]] && [[ "${USE_DYNAMIC_TRANSPLANT}" == "t
         echo "  -> Transplanting: $COMMIT_TITLE"
         git cherry-pick "$commit"
     done
+    
+    echo ">>> 7. Applying GKI 6.6 SELinux Compiler Fixes..."
+    SELINUX_FILE="kernel/feature/selinux_hide.c"
+    if [ -f "$SELINUX_FILE" ]; then
+        sed -i 's/static int security_context_to_sid_with_policy/int security_context_to_sid_with_policy/g' "$SELINUX_FILE"
+        sed -i 's/static int security_sid_to_context_with_policy/int security_sid_to_context_with_policy/g' "$SELINUX_FILE"
+        sed -i 's/static void security_compute_av_user_with_policy/void security_compute_av_user_with_policy/g' "$SELINUX_FILE"
+        
+        # Commit the dynamic fix so the working tree is clean for Bazel
+        git add "$SELINUX_FILE"
+        git commit -m "fix: dynamically un-trap SELinux prototypes for Bazel GKI 6.6"
+    fi
+    
     echo ">>> Dynamic SuSFS integration complete!"
 
     # Step back out to the main workspace
@@ -127,29 +140,28 @@ fi
 SHORT_HASH=${UPSTREAM_HASH:0:7}
 echo "UPSTREAM_HASH=${UPSTREAM_HASH}" >> $GITHUB_ENV
 
-echo ">>> Severing Kbuild Git dependencies for Kleaf Sandbox..."
+echo ">>> Injecting Sandbox Variables into Kbuild..."
 TARGET_KBUILD="${MANAGER_DIR}/kernel/Kbuild"
 
 if [ -f "$TARGET_KBUILD" ]; then
-    # Prepend GNU Make immutable overrides
+    # Inject standard variables at the top of Kbuild for the '?=' operators to catch
     {
         # --- Official & Next Namespaces ---
-        echo "override KSU_GIT_VERSION_VALID := 1"
-        echo "override KSU_GIT_VERSION := ${CALCULATED_COUNT}"
-        echo "override KSU_GIT_TAG := ${CALCULATED_TAG}"
-        echo "override KSU_COMMIT_SHA := ${SHORT_HASH}"
-        echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
+        echo "KSU_GIT_VERSION_VALID := 1"
+        echo "KSU_GIT_VERSION := ${CALCULATED_COUNT}"
+        echo "KSU_GIT_TAG := ${CALCULATED_TAG}"
+        echo "KSU_COMMIT_SHA := ${SHORT_HASH}"
+        echo "KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
         # --- ReSukiSU & Ultra Namespaces ---
-        echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
-        echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
-        echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
-        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
+        echo "KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
+        echo "KSU_TAG_NAME := ${CALCULATED_TAG}"
+        echo "KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
+        echo "KSU_BRANCH := ${UPSTREAM_BRANCH}"
         
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
 
-    echo "  -> Prepend Immutable Gatekeeper: TRUE"
     echo "  -> Prepend Immutable Count: ${CALCULATED_COUNT}"
     echo "  -> Prepend Immutable Tag: ${CALCULATED_TAG}"
     echo "  -> Prepend Immutable SHA: ${SHORT_HASH}"
