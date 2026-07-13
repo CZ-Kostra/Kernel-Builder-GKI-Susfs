@@ -132,24 +132,8 @@ echo ">>> Injecting Sandbox Variables into Kbuild..."
 TARGET_KBUILD="${MANAGER_DIR}/kernel/Kbuild"
 
 if [ -f "$TARGET_KBUILD" ]; then
-    
-    # 1. Safely scrape the SuSFS version OUTSIDE the Bazel sandbox
-    SUSFS_HEADER="common/include/linux/susfs.h"
-    if [ -f "$SUSFS_HEADER" ]; then
-        # Extract the version string (e.g., "v2.2.0")
-        EXTRACTED_SUSFS_VERSION=$(grep -E '^#define SUSFS_VERSION' "$SUSFS_HEADER" | cut -d ' ' -f3 | sed 's/"//g')
-        
-        # Prepare the Make info banner
-        SUSFS_BANNER="\$(info )
-\$(info ========================================)
-\$(info >>> SuSFS Engine Active: ${EXTRACTED_SUSFS_VERSION} <<<)
-\$(info ========================================)
-\$(info )"
-    else
-        SUSFS_BANNER="\$(info >>> SuSFS Engine NOT Detected <<<)"
-    fi
 
-    # 2. Inject everything immutably
+    # Inject everything immutably
     {
         # --- Official & Next Namespaces ---
         echo "override KSU_GIT_VERSION_VALID := false" 
