@@ -132,20 +132,40 @@ echo ">>> Injecting Sandbox Variables into Kbuild..."
 TARGET_KBUILD="${MANAGER_DIR}/kernel/Kbuild"
 
 if [ -f "$TARGET_KBUILD" ]; then
-    # Inject standard variables at the top of Kbuild for the '?=' operators to catch
+    
+    # 1. Safely scrape the SuSFS version OUTSIDE the Bazel sandbox
+    SUSFS_HEADER="common/include/linux/susfs.h"
+    if [ -f "$SUSFS_HEADER" ]; then
+        # Extract the version string (e.g., "v2.2.0")
+        EXTRACTED_SUSFS_VERSION=$(grep -E '^#define SUSFS_VERSION' "$SUSFS_HEADER" | cut -d ' ' -f3 | sed 's/"//g')
+        
+        # Prepare the Make info banner
+        SUSFS_BANNER="\$(info )
+\$(info ========================================)
+\$(info >>> SuSFS Engine Active: ${EXTRACTED_SUSFS_VERSION} <<<)
+\$(info ========================================)
+\$(info )"
+    else
+        SUSFS_BANNER="\$(info >>> SuSFS Engine NOT Detected <<<)"
+    fi
+
+    # 2. Inject everything immutably
     {
         # --- Official & Next Namespaces ---
-        echo "KSU_GIT_VERSION_VALID := 1"
-        echo "KSU_GIT_VERSION := ${CALCULATED_COUNT}"
-        echo "KSU_GIT_TAG := ${CALCULATED_TAG}"
-        echo "KSU_COMMIT_SHA := ${SHORT_HASH}"
-        echo "KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
+        echo "override KSU_GIT_VERSION_VALID := false" 
+        echo "override KSU_GIT_VERSION := ${CALCULATED_COUNT}"
+        echo "override KSU_GIT_TAG := ${CALCULATED_TAG}"
+        echo "override KSU_COMMIT_SHA := ${SHORT_HASH}"
+        echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
         # --- ReSukiSU & Ultra Namespaces ---
-        echo "KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
-        echo "KSU_TAG_NAME := ${CALCULATED_TAG}"
-        echo "KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
-        echo "KSU_BRANCH := ${UPSTREAM_BRANCH}"
+        echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
+        echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
+        echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
+        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
+        
+        # --- Inject the Visual Banner ---
+        echo "${SUSFS_BANNER}"
         
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
