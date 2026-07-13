@@ -133,7 +133,7 @@ TARGET_KBUILD="${MANAGER_DIR}/kernel/Kbuild"
 
 if [ -f "$TARGET_KBUILD" ]; then
 
-    # Inject everything immutably
+    # 2. Inject everything immutably
     {
         # --- Official & Next Namespaces ---
         echo "override KSU_GIT_VERSION_VALID := false" 
@@ -142,11 +142,18 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override KSU_COMMIT_SHA := ${SHORT_HASH}"
         echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
-        # --- ReSukiSU & Ultra Namespaces ---
+        # --- ReSukiSU Namespaces ---
         echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
         echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
         echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
         echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
+
+        # --- SukiSU-Ultra Specific Namespaces ---
+        echo "override LOCAL_COUNT := ${CALCULATED_COUNT}"
+        echo "override git_commit_count := ${CALCULATED_COUNT}"
+        echo "override git_short_sha := ${SHORT_HASH}"
+        echo "override git_branch := ${UPSTREAM_BRANCH}"
+        echo "override git_latest_tag := ${CALCULATED_TAG}"
         
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
