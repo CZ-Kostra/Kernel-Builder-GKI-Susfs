@@ -148,9 +148,6 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
         echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
         
-        # --- Inject the Visual Banner ---
-        echo "${SUSFS_BANNER}"
-        
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
 
