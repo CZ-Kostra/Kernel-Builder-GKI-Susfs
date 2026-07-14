@@ -67,143 +67,85 @@ for ID in $RUN_IDS; do
     ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
       "https://api.github.com/repos/$REPO/actions/runs/$ID/artifacts")
     
-    # Only grab the URL if the artifact is explicitly NOT expired
+    # Action Artifacts are always ZIPs. Prepends 'ARTIFACT|' for the download loop.
     DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
       .artifacts[]? 
-      | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
+      | select(.name | test("(?i)manager"))
+      | select(.name | test("(?i)(debug|mappings|gradle)") | not)
+      | select(.name | test("(?i)(armeabi-v7a|universal|x86_64)") | not)
       | select(.expired == false)
-      | .archive_download_url // empty')
-      
+      | "ARTIFACT|\(.archive_download_url)" // empty')
+
     if [ -n "$DOWNLOAD_URLS" ]; then
         echo ">>> Success! Found unexpired exact Manager artifacts in Run ID: $ID"
         break
     fi
 done
+
 # ==========================================
-# 2. THE RELEASE TAG BRIDGE (For expired artifacts)
+# 2. THE LATEST RELEASE FALLBACK 
 # ==========================================
 if [ -z "$DOWNLOAD_URLS" ]; then
-    echo "[-] Exact match artifacts missing/expired. Checking GitHub Releases for pinned commit..."
+    echo "[-] Exact match missing or expired. Fetching the latest release tag as fallback..."
     
-    # 1. Dynamically hunt for a Tag anchored to this exact commit hash
-    # The ^{} strips the annotated tag pointer to reveal the true underlying commit hash
-    TAG_NAME=$(git ls-remote --tags "https://github.com/${REPO}.git" | grep "${UPSTREAM_HASH}" | awk '{print $2}' | sed 's/\^{}//' | sed 's/refs\/tags\///' | head -n 1)
+    LATEST_RELEASE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+      "https://api.github.com/repos/$REPO/releases/latest")
     
-    if [ -n "$TAG_NAME" ]; then
-        echo ">>> Found official Release Tag: $TAG_NAME. Fetching Release assets..."
-        RELEASE_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-          "https://api.github.com/repos/$REPO/releases/tags/$TAG_NAME")
-        
-        # 2. Extract raw APK URLs directly from the release (Pre-filtering out debug builds!)
-        RELEASE_APK_URLS=$(echo "$RELEASE_JSON" | jq -r '
-          .assets[]? 
-          | select(.name | test("(?i)\\.apk$"))
-          | select(.name | test("(?i)debug") | not)
-          | .browser_download_url // empty')
-          
-        if [ -n "$RELEASE_APK_URLS" ]; then
-            echo ">>> Success! Found Release APKs."
-            mkdir -p manager_apk
-            
-            IFS=$'\n'
-            for URL in $RELEASE_APK_URLS; do
-                APK_NAME=$(basename "$URL")
-                echo "  -> Downloading: $APK_NAME"
-                curl -s -L -H "Authorization: token $GH_TOKEN" -o "manager_apk/$APK_NAME" "$URL"
-            done
-            unset IFS
-            
-            # Set a flag so we know we bypassed zip artifacts and don't need to unzip later
-            RELEASE_MODE_SUCCESS=true
-        else
-            echo "[-] Tag found, but no APKs attached to the release."
-        fi
-    else
-        echo "[-] No Release Tag found for this commit."
+    # Identifies if the release asset is a .zip or .apk and tags it accordingly.
+    DOWNLOAD_URLS=$(echo "$LATEST_RELEASE" | jq -r '
+      .assets[]? 
+      | select(.name | test("(?i)manager"))
+      | select(.name | test("(?i)(debug|mappings|gradle)") | not)
+      | select(.name | test("(?i)(armeabi-v7a|universal|x86_64)") | not)
+      | if (.name | test("(?i)\\.zip$")) then "RELEASE_ZIP|\(.url)" else "RELEASE_APK|\(.url)" end')
+      
+    if [ -n "$DOWNLOAD_URLS" ]; then
+        echo ">>> Success! Found fallback Manager asset(s) in the latest release."
     fi
 fi
 
 # ==========================================
-# 3. THE PAGINATED FALLBACK (Last Resort)
+# 3. DOWNLOAD & CLEANUP
 # ==========================================
-if [ -z "$DOWNLOAD_URLS" ] && [ "${RELEASE_MODE_SUCCESS:-false}" != "true" ]; then
-    echo "[-] Fallback to deep chronological search for the latest valid Manager..."
-    
-    PAGE=1
-    MAX_PAGES=5 # Max 250 runs (Prevents infinite loops)
-    
-    while [ $PAGE -le $MAX_PAGES ]; do
-        echo ">>> Fetching Fallback Page $PAGE..."
-        RECENT_RUNS=$(curl -s -H "Authorization: token $GH_TOKEN" \
-          "https://api.github.com/repos/$REPO/actions/runs?status=success&per_page=50&page=$PAGE")
-        
-        FALLBACK_IDS=$(echo "$RECENT_RUNS" | jq -r '.workflow_runs[]?.id // empty')
-        
-        if [ -z "$FALLBACK_IDS" ]; then break; fi
-        
-        for ID in $FALLBACK_IDS; do
-            echo "    -> Inspecting fallback Run ID: $ID..."
-            ARTIFACTS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-              "https://api.github.com/repos/$REPO/actions/runs/$ID/artifacts")
-            
-            IS_EXPIRED=$(echo "$ARTIFACTS_JSON" | jq -r '
-              .artifacts[]? 
-              | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)"))
-              | .expired // empty' | head -n 1)
-              
-            if [ "$IS_EXPIRED" == "true" ]; then
-                echo "[-] Hit the 90-day expiration wall. Aborting deep search."
-                break 2
-            fi
-            
-            DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
-              .artifacts[]? 
-              | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
-              | select(.expired == false)
-              | .archive_download_url // empty')
-              
-            if [ -n "$DOWNLOAD_URLS" ]; then
-                echo ">>> Success! Found fallback Manager artifacts in Run ID: $ID"
-                break 2
-            fi
-        done
-        
-        PAGE=$((PAGE+1))
-    done
+if [ -z "$DOWNLOAD_URLS" ]; then
+    echo "[-] Critical: Exhausted search. Failed to locate ANY valid Manager artifacts or release assets for $REPO."
+    exit 1
 fi
 
-# ==========================================
-# 4. DOWNLOAD & EXTRACT ZIP ARTIFACTS
-# ==========================================
-# Only execute this block if we DID NOT already download raw APKs directly from a Release
-if [ "${RELEASE_MODE_SUCCESS:-false}" != "true" ] && [ -n "$DOWNLOAD_URLS" ]; then
-    mkdir -p manager_apk
-    COUNTER=1
+mkdir -p manager_apk
+COUNTER=1
 
-    IFS=$'\n'
-    for URL in $DOWNLOAD_URLS; do
-      echo ">>> Downloading artifact archive $COUNTER..."
-      curl -s -L -H "Authorization: token $GH_TOKEN" -o manager_${COUNTER}.zip "$URL"
+# Change IFS so bash correctly handles entries with spaces or newlines
+IFS=$'\n'
+for ENTRY in $DOWNLOAD_URLS; do
+  # Split the tag and the URL
+  TYPE=$(echo "$ENTRY" | cut -d'|' -f1)
+  URL=$(echo "$ENTRY" | cut -d'|' -f2)
+  
+  if [ "$TYPE" == "RELEASE_APK" ]; then
+      echo ">>> Downloading standalone release APK $COUNTER..."
+      curl -s -L \
+        -H "Authorization: token $GH_TOKEN" \
+        -o "manager_apk/manager_${COUNTER}.apk" "$URL"
+        
+  elif [[ "$TYPE" == *"ZIP"* ]] || [[ "$TYPE" == "ARTIFACT" ]]; then
+      echo ">>> Downloading ZIP archive $COUNTER..."
+      curl -s -L \
+        -H "Authorization: token $GH_TOKEN" \
+        -o "manager_${COUNTER}.zip" "$URL"
       
-      echo ">>> Extracting..."
-      unzip -q -o manager_${COUNTER}.zip -d manager_apk/
-      rm manager_${COUNTER}.zip
-      
-      COUNTER=$((COUNTER+1))
-    done
-    unset IFS
-fi
+      echo ">>> Extracting archive..."
+      unzip -q -o "manager_${COUNTER}.zip" -d manager_apk/
+      rm "manager_${COUNTER}.zip"
+  fi
+  
+  COUNTER=$((COUNTER+1))
+done
+unset IFS
 
-# ==========================================
-# 5. AGGRESSIVE ARCHITECTURE & DEBUG CLEANUP
-# ==========================================
-echo ">>> Cleaning up unnecessary architectures & debug builds..."
-
-# We added '-o -name "*debug*.apk"' to instantly trash the debug versions!
-find manager_apk/ -type f \( -name "*x86*.apk" -o -name "*armeabi-v7a*.apk" -o -name "*universal*.apk" -o -name "*debug*.apk" \) -exec rm -f {} +
+echo ">>> Cleaning up unnecessary architectures..."
+find manager_apk/ -type f \( -name "*armeabi-v7a*" -o -name "*universal*" -o -name "*x86_64*" \) -exec rm -f {} +
 
 echo ">>> Manager(s) successfully staged for final upload!"
 ls -1 manager_apk/
-
-
 

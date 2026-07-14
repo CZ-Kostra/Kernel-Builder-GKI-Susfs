@@ -132,7 +132,26 @@ if [ -f "common/fs/proc/task_mmu.c.rej" ]; then
   fi
 fi
 
-# 5. Final Validation
+# 5. Fix mm/rmap.c (Redundant Upstream Backport vs Legacy Kernel)
+if [ -f "common/mm/rmap.c.rej" ]; then
+  echo ">>> Found rmap.c.rej. Analyzing kernel version compatibility..."
+  
+  # We must check the ACTUAL C file, not the .rej file, to see if the kernel is modern
+  if grep -q "tlb_gather_mmu_vma" "common/mm/rmap.c"; then
+    echo "  -> Native mmu_gather logic detected in source (Android 15 / 6.6+ behavior)."
+    echo "  -> The SuSFS backport is redundant. Safely ignoring the rejection!"
+    rm "common/mm/rmap.c.rej"
+  else
+    echo "  [-] CRITICAL: Older kernel (e.g. 5.10 or 6.1) detected!" >&2
+    echo "  [-] This kernel lacks the native TLB backport and GENUINELY needs the patch." >&2
+    echo "  [-] A manual sed injection is required for this specific older kernel branch." >&2
+    # We deliberately DO NOT delete the .rej file here. 
+    # This ensures your Final Validation step catches it and halts the build 
+    # so we don't compile a broken kernel!
+  fi
+fi
+
+# 6. Final Validation
 echo ">>> Checking for unresolved patch rejections..."
 mapfile -t REMAINING_REJ < <(find common -type f -name '*.rej')
 
