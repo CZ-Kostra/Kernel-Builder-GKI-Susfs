@@ -132,7 +132,21 @@ if [ -f "common/fs/proc/task_mmu.c.rej" ]; then
   fi
 fi
 
-# 5. Final Validation
+# 5. Fix mm/rmap.c (Redundant Upstream Backport)
+if [ -f "common/mm/rmap.c.rej" ]; then
+  echo ">>> Found rmap.c.rej. Analyzing failure type..."
+  
+  # Check if this is strictly Simonpunk's bundled upstream backport
+  if grep -q "tlb_gather_mmu_vma" "common/mm/rmap.c.rej"; then
+    echo "  -> Rejection is the redundant mmu_gather TLB backport."
+    echo "  -> Android 15 6.6 already has this logic built-in. Safely ignoring!"
+    rm "common/mm/rmap.c.rej"
+  else
+    echo "  [-] WARNING: rmap.c.rej contains unknown logic! Cannot safely patch." >&2
+  fi
+fi
+
+# 6. Final Validation
 echo ">>> Checking for unresolved patch rejections..."
 mapfile -t REMAINING_REJ < <(find common -type f -name '*.rej')
 
