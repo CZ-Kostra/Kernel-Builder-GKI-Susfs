@@ -70,10 +70,11 @@ for ID in $RUN_IDS; do
     # Only grab the URL if the artifact is explicitly NOT expired
     DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
       .artifacts[]? 
-      | select(.name | test("(?i)(SukiSU|KernelSU|manager|spoof)")) 
+      | select(.name | test("(?i)manager"))
+      | select(.name | test("(?i)gradle") | not)
       | select(.expired == false)
       | .archive_download_url // empty')
-      
+
     if [ -n "$DOWNLOAD_URLS" ]; then
         echo ">>> Success! Found unexpired exact Manager artifacts in Run ID: $ID"
         break
