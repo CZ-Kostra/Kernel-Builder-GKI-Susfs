@@ -126,14 +126,12 @@ for ENTRY in $DOWNLOAD_URLS; do
       echo ">>> Downloading standalone release APK $COUNTER..."
       curl -s -L \
         -H "Authorization: token $GH_TOKEN" \
-        -H "Accept: application/octet-stream" \
         -o "manager_apk/manager_${COUNTER}.apk" "$URL"
         
   elif [[ "$TYPE" == *"ZIP"* ]] || [[ "$TYPE" == "ARTIFACT" ]]; then
       echo ">>> Downloading ZIP archive $COUNTER..."
       curl -s -L \
         -H "Authorization: token $GH_TOKEN" \
-        -H "Accept: application/octet-stream" \
         -o "manager_${COUNTER}.zip" "$URL"
       
       echo ">>> Extracting archive..."
