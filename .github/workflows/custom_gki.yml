@@ -193,13 +193,15 @@ jobs:
           
           if [ "${{ inputs.build_channel }}" == "canary" ]; then
             
-            if [ "${{ inputs.root_manager }}" == "KernelSU-Next" ]; then
-               echo ">>> Routing KernelSU-Next to Automated Dynamic Transplant..."
+            # Route BOTH KernelSU-Next and ReSukiSU to the dynamic engine
+            if [[ "${{ inputs.root_manager }}" == "KernelSU-Next" || "${{ inputs.root_manager }}" == "ReSukiSU" ]]; then
+               echo ">>> Routing ${{ inputs.root_manager }} to Automated Dynamic Transplant..."
                echo "USE_DYNAMIC_TRANSPLANT=true" >> $GITHUB_ENV
                echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
                echo "KSU_VARIANT_REPO_URL=" >> $GITHUB_ENV
                echo "KSU_VARIANT_REF=" >> $GITHUB_ENV
             else
+               # SukiSU-Ultra (and any others) will fall back here for now
                echo ">>> Routing ${{ inputs.root_manager }} to shoey63 Canary fork..."
                echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
                echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
