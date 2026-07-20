@@ -108,8 +108,8 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         git config --global user.name "GitHub Actions Canary"
 
         echo ">>> 3. Fetching and transplanting custom SuSFS patch from canary branch..."
-        # Fetching the tip of the canary-hash branch so we never have to hardcode commit hashes
-        git fetch https://github.com/shoey63/ReSukiSU.git canary-hash
+        # Fetching the tip of the canary branch dynamically
+        git fetch https://github.com/shoey63/ReSukiSU.git canary
         if ! git cherry-pick FETCH_HEAD; then
             echo "[-] CRITICAL: Merge conflict detected on ReSukiSU patch!"
             echo ">>> Dumping conflict markers to console:"
