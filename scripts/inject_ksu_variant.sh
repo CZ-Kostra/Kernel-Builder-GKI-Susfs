@@ -35,20 +35,30 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         
         echo ">>> 1. Cloning pristine official KernelSU-Next..."
         git clone https://github.com/KernelSU-Next/KernelSU-Next.git "${MANAGER_DIR}"
+        
+        # Prevent setup.sh from performing a redundant clone and execute it BEFORE transplanting
+        # so it doesn't git-reset our dynamic cherry-picks!
+        ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
+        
+        echo ">>> Executing native setup.sh to initialize branch..."
+        cd common
+        bash "${MANAGER_DIR}/kernel/setup.sh" dev
+        cd ..
+
         cd "${MANAGER_DIR}"
 
         # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
         UPSTREAM_HASH=$(git log -n 1 --format="%H")
 
-        echo ">>> 2. Scraping the latest official tag for the Bazel Sandbox..."
-        CALCULATED_TAG=$(git describe --tags --abbrev=0)
+        echo ">>> 2. Scraping the latest official release tag..."
+        CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
         echo "  -> Target Tag: $CALCULATED_TAG"
 
         echo ">>> 3. Fetching Pershoot's live laboratory..."
         git remote add pershoot https://github.com/pershoot/KernelSU-Next.git
         git fetch pershoot dev-susfs
 
-        echo ">>> 4. Calculating the architectural split..."
+        echo ">>> 4. Calculating the merge-base for SuSFS commits..."
         MERGE_BASE=$(git merge-base HEAD pershoot/dev-susfs)
 
         echo ">>> 5. Generating dynamic commit list (Filtering out CI hacks)..."
@@ -76,14 +86,6 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         # Step back out to the main workspace
         cd .. 
 
-        # Prevent setup.sh from performing a redundant clone by spoofing its presence in common/
-        ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
-
-        echo ">>> Executing native setup.sh..."
-        cd common
-        bash "${MANAGER_DIR}/kernel/setup.sh" dev
-        cd ..
-
         # Lock in variables for the Kbuild Gatekeeper
         UPSTREAM_REPO="KernelSU-Next/KernelSU-Next"
         UPSTREAM_BRANCH="dev"
@@ -94,22 +96,31 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         
         echo ">>> 1. Cloning pristine official ReSukiSU..."
         git clone https://github.com/ReSukiSU/ReSukiSU.git "${MANAGER_DIR}"
+
+        # Prevent setup.sh from performing a redundant clone and execute it BEFORE transplanting
+        ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
+        
+        echo ">>> Executing native setup.sh to initialize branch..."
+        cd common
+        bash "${MANAGER_DIR}/kernel/setup.sh" main
+        cd ..
+
         cd "${MANAGER_DIR}"
 
         # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
         UPSTREAM_HASH=$(git log -n 1 --format="%H")
 
-        echo ">>> 2. Scraping the latest official tag for the Bazel Sandbox..."
-        CALCULATED_TAG=$(git describe --tags --abbrev=0)
+        echo ">>> 2. Scraping the latest official release tag..."
+        CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
         echo "  -> Target Tag: $CALCULATED_TAG"
 
         echo ">>> Configuring dummy Git identity for transplant operations..."
         git config --global user.email "runner@github.actions"
         git config --global user.name "GitHub Actions Canary"
 
-        echo ">>> 3. Fetching and transplanting custom SuSFS patch from canary branch..."
-        # Fetching the tip of the canary branch dynamically
+        echo ">>> 3. Fetching and transplanting HEAD commit from canary branch..."
         git fetch https://github.com/shoey63/ReSukiSU.git canary
+        
         if ! git cherry-pick FETCH_HEAD; then
             echo "[-] CRITICAL: Merge conflict detected on ReSukiSU patch!"
             echo ">>> Dumping conflict markers to console:"
@@ -118,18 +129,10 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
             exit 1
         fi
 
-        echo ">>> Dynamic SuSFS integration complete!"
+        echo ">>> Dynamic integration complete!"
 
         # Step back out to the main workspace
         cd .. 
-
-        # Prevent setup.sh from performing a redundant clone by spoofing its presence in common/
-        ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
-
-        echo ">>> Executing native setup.sh..."
-        cd common
-        bash "${MANAGER_DIR}/kernel/setup.sh" main
-        cd ..
 
         # Lock in variables for the Kbuild Gatekeeper
         UPSTREAM_REPO="ReSukiSU/ReSukiSU"
@@ -140,6 +143,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         echo "[-] Error: Dynamic transplant requested but not supported for '${VARIANT}'." >&2
         exit 1
     fi
+fi
 
 # ========================================================================
 # STABLE / LEGACY VARIANTS
