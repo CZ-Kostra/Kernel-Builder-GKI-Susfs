@@ -26,61 +26,121 @@ rm -rf "${MANAGER_DIR}"
 echo "=== Integrating ${VARIANT} ==="
 
 # ========================================================================
-# KERNELSU-NEXT: CANARY DYNAMIC TRANSPLANT
+# CANARY DYNAMIC TRANSPLANT
 # ========================================================================
-if [[ "${VARIANT}" == "KernelSU-Next" ]] && [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
-    echo ">>> [CANARY] Executing Automated Dynamic Transplant for KernelSU-Next..."
+if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
+
+    if [[ "${VARIANT}" == "KernelSU-Next" ]]; then
+        echo ">>> [CANARY] Executing Automated Dynamic Transplant for KernelSU-Next..."
+        
+        echo ">>> 1. Cloning pristine official KernelSU-Next..."
+        git clone https://github.com/KernelSU-Next/KernelSU-Next.git "${MANAGER_DIR}"
+        cd "${MANAGER_DIR}"
+
+        # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
+        UPSTREAM_HASH=$(git log -n 1 --format="%H")
+
+        echo ">>> 2. Scraping the latest official tag for the Bazel Sandbox..."
+        CALCULATED_TAG=$(git describe --tags --abbrev=0)
+        echo "  -> Target Tag: $CALCULATED_TAG"
+
+        echo ">>> 3. Fetching Pershoot's live laboratory..."
+        git remote add pershoot https://github.com/pershoot/KernelSU-Next.git
+        git fetch pershoot dev-susfs
+
+        echo ">>> 4. Calculating the architectural split..."
+        MERGE_BASE=$(git merge-base HEAD pershoot/dev-susfs)
+
+        echo ">>> 5. Generating dynamic commit list (Filtering out CI hacks)..."
+        VALID_COMMITS=$(git log --reverse --format="%H %s" ${MERGE_BASE}..pershoot/dev-susfs | grep -v -i -E "setup:|manager" | awk '{print $1}')
+
+        echo ">>> Configuring dummy Git identity for transplant operations..."
+        git config --global user.email "runner@github.actions"
+        git config --global user.name "GitHub Actions Canary"
+
+        echo ">>> 6. Transplanting pure SuSFS commits onto upstream tree..."
+        for commit in $VALID_COMMITS; do
+            COMMIT_TITLE=$(git log --format="%s" -n 1 "$commit")
+            echo "  -> Transplanting: $COMMIT_TITLE"
+            if ! git cherry-pick "$commit"; then
+                echo "[-] CRITICAL: Merge conflict detected on commit: $commit"
+                echo ">>> Dumping conflict markers to console:"
+                git --no-pager diff --diff-filter=U
+                git cherry-pick --abort
+                exit 1
+            fi
+        done
+
+        echo ">>> Dynamic SuSFS integration complete!"
+
+        # Step back out to the main workspace
+        cd .. 
+
+        # Prevent setup.sh from performing a redundant clone by spoofing its presence in common/
+        ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
+
+        echo ">>> Executing native setup.sh..."
+        cd common
+        bash "${MANAGER_DIR}/kernel/setup.sh" dev
+        cd ..
+
+        # Lock in variables for the Kbuild Gatekeeper
+        UPSTREAM_REPO="KernelSU-Next/KernelSU-Next"
+        UPSTREAM_BRANCH="dev"
+        CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
+        
+    elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
+        echo ">>> [CANARY] Executing Automated Dynamic Transplant for ReSukiSU..."
+        
+        echo ">>> 1. Cloning pristine official ReSukiSU..."
+        git clone https://github.com/ReSukiSU/ReSukiSU.git "${MANAGER_DIR}"
+        cd "${MANAGER_DIR}"
+
+        # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
+        UPSTREAM_HASH=$(git log -n 1 --format="%H")
+
+        echo ">>> 2. Scraping the latest official tag for the Bazel Sandbox..."
+        CALCULATED_TAG=$(git describe --tags --abbrev=0)
+        echo "  -> Target Tag: $CALCULATED_TAG"
+
+        echo ">>> Configuring dummy Git identity for transplant operations..."
+        git config --global user.email "runner@github.actions"
+        git config --global user.name "GitHub Actions Canary"
+
+        echo ">>> 3. Fetching and transplanting custom SuSFS patch from canary branch..."
+        # Fetching the tip of the canary-hash branch so we never have to hardcode commit hashes
+        git fetch https://github.com/shoey63/ReSukiSU.git canary-hash
+        if ! git cherry-pick FETCH_HEAD; then
+            echo "[-] CRITICAL: Merge conflict detected on ReSukiSU patch!"
+            echo ">>> Dumping conflict markers to console:"
+            git --no-pager diff --diff-filter=U
+            git cherry-pick --abort
+            exit 1
+        fi
+
+        echo ">>> Dynamic SuSFS integration complete!"
+
+        # Step back out to the main workspace
+        cd .. 
+
+        # Prevent setup.sh from performing a redundant clone by spoofing its presence in common/
+        ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
+
+        echo ">>> Executing native setup.sh..."
+        cd common
+        bash "${MANAGER_DIR}/kernel/setup.sh" main
+        cd ..
+
+        # Lock in variables for the Kbuild Gatekeeper
+        UPSTREAM_REPO="ReSukiSU/ReSukiSU"
+        UPSTREAM_BRANCH="main"
+        CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
     
-    echo ">>> 1. Cloning pristine official KernelSU-Next..."
-    git clone https://github.com/KernelSU-Next/KernelSU-Next.git "${MANAGER_DIR}"
-    cd "${MANAGER_DIR}"
+    else
+        echo "[-] Error: Dynamic transplant requested but not supported for '${VARIANT}'." >&2
+        exit 1
+    fi
 
-    # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
-    UPSTREAM_HASH=$(git log -n 1 --format="%H")
-
-    echo ">>> 2. Scraping the latest official tag for the Bazel Sandbox..."
-    CALCULATED_TAG=$(git describe --tags --abbrev=0)
-    echo "  -> Target Tag: $CALCULATED_TAG"
-
-    echo ">>> 3. Fetching Pershoot's live laboratory..."
-    git remote add pershoot https://github.com/pershoot/KernelSU-Next.git
-    git fetch pershoot dev-susfs
-
-    echo ">>> 4. Calculating the architectural split..."
-    MERGE_BASE=$(git merge-base HEAD pershoot/dev-susfs)
-
-    echo ">>> 5. Generating dynamic commit list (Filtering out CI hacks)..."
-    VALID_COMMITS=$(git log --reverse --format="%H %s" ${MERGE_BASE}..pershoot/dev-susfs | grep -v -i -E "setup:|manager" | awk '{print $1}')
-
-    echo ">>> Configuring dummy Git identity for transplant operations..."
-    git config --global user.email "runner@github.actions"
-    git config --global user.name "GitHub Actions Canary"
-
-    echo ">>> 6. Transplanting pure SuSFS commits onto upstream tree..."
-    for commit in $VALID_COMMITS; do
-        COMMIT_TITLE=$(git log --format="%s" -n 1 "$commit")
-        echo "  -> Transplanting: $COMMIT_TITLE"
-        git cherry-pick "$commit"
-    done
-
-    echo ">>> Dynamic SuSFS integration complete!"
-
-    # Step back out to the main workspace
-    cd .. 
-
-    # Prevent setup.sh from performing a redundant clone by spoofing its presence in common/
-    ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
-
-    echo ">>> Executing native setup.sh..."
-    cd common
-    bash "${MANAGER_DIR}/kernel/setup.sh" dev
-    cd ..
-
-    # Lock in variables for the Kbuild Gatekeeper
-    UPSTREAM_REPO="KernelSU-Next/KernelSU-Next"
-    UPSTREAM_BRANCH="dev"
-    CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
-    
 # ========================================================================
 # STABLE / LEGACY VARIANTS
 # ========================================================================
