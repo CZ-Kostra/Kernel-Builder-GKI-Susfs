@@ -13,11 +13,11 @@ case "${VARIANT}" in
     "KernelSU-Next")
         MANAGER_DIR="KernelSU-Next"
         ;;
-    "SukiSU-Ultra" | "ReSukiSU")
+    "SukiSU-Ultra" | "ReSukiSU" | "KernelSU")
         MANAGER_DIR="KernelSU"
         ;;
     *)
-        echo "[-] Error: Unsupported Variant '${VARIANT}'. Vanilla KernelSU is deprecated." >&2
+        echo "[-] Error: Unsupported Variant '${VARIANT}'. Selected variant not supported" >&2
         exit 1
         ;;
 esac
@@ -91,11 +91,18 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         UPSTREAM_BRANCH="dev"
         CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
         
-    elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
-        echo ">>> [CANARY] Executing Automated Dynamic Transplant for ReSukiSU..."
-        
-        echo ">>> 1. Cloning pristine official ReSukiSU..."
-        git clone https://github.com/ReSukiSU/ReSukiSU.git "${MANAGER_DIR}"
+    elif [[ "${VARIANT}" == "KernelSU" || "${VARIANT}" == "ReSukiSU" || "${VARIANT}" == "SukiSU-Ultra" ]]; then
+        echo ">>> [CANARY] Executing Automated Dynamic Transplant for ${VARIANT}..."
+
+        # Route to the correct GitHub organization/owner
+        if [[ "${VARIANT}" == "KernelSU" ]]; then
+            REPO_OWNER="tiann"
+        else
+            REPO_OWNER="${VARIANT}"
+        fi
+
+        echo ">>> 1. Cloning pristine official ${VARIANT}..."
+        git clone "https://github.com/${REPO_OWNER}/${VARIANT}.git" "${MANAGER_DIR}"
 
         # Prevent setup.sh from performing a redundant clone and execute it BEFORE transplanting
         ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
@@ -118,11 +125,11 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         git config --global user.email "runner@github.actions"
         git config --global user.name "GitHub Actions Canary"
 
-        echo ">>> 3. Fetching and transplanting HEAD commit from canary branch..."
-        git fetch https://github.com/shoey63/ReSukiSU.git canary
-        
+        echo ">>> 3. Fetching and cherry-picking susfs v 2.20 commit..."
+        git fetch "https://github.com/shoey63/${VARIANT}.git" $KSU_VARIANT_REF
+
         if ! git cherry-pick FETCH_HEAD; then
-            echo "[-] CRITICAL: Merge conflict detected on ReSukiSU patch!"
+            echo "[-] CRITICAL: Merge conflict detected on ${VARIANT} patch!"
             echo ">>> Dumping conflict markers to console:"
             git --no-pager diff --diff-filter=U
             git cherry-pick --abort
@@ -135,7 +142,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         cd .. 
 
         # Lock in variables for the Kbuild Gatekeeper
-        UPSTREAM_REPO="ReSukiSU/ReSukiSU"
+        UPSTREAM_REPO="${VARIANT}/${VARIANT}"
         UPSTREAM_BRANCH="main"
         CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
     
@@ -169,15 +176,21 @@ else
     elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
         UPSTREAM_REPO="ReSukiSU/ReSukiSU"
         UPSTREAM_BRANCH="main"
+    elif [[ "${VARIANT}" == "KernelSU" ]]; then
+        UPSTREAM_REPO="tiann/KernelSU"
+        UPSTREAM_BRANCH="main"
+    else
+        echo "Error: Unknown variant '${VARIANT}'" >&2
+        exit 1
     fi
 
     echo ">>> Locating official upstream sync point for ${UPSTREAM_REPO}..."
     git -C "${MANAGER_DIR}" fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" "${UPSTREAM_BRANCH}"
     RAW_BASE=$(git -C "${MANAGER_DIR}" merge-base HEAD FETCH_HEAD)
 
-    # Walk backward down the official mainline branch, ignoring bots
+    # Walk backward down the official mainline branch and fetch HEAD commit.
     set +o pipefail
-    UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H %an" | grep -m 1 -iv "dependabot" | awk '{print $1}')
+    UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H" -n 1)
     set -o pipefail
     
     # Calculate exact versions for the Sandbox Gatekeeper
@@ -206,10 +219,11 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
         # --- ReSukiSU Namespaces ---
+        echo "override LOCAL_GIT_EXISTS := 1"
         echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
         echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
         echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
-        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
+        echo "override KSU_COMMIT_SHA := ${SHORT_HASH}" 
 
         # --- SukiSU-Ultra Specific Namespaces ---
         echo "override LOCAL_COUNT := ${CALCULATED_COUNT}"
@@ -217,7 +231,7 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override git_short_sha := ${SHORT_HASH}"
         echo "override git_branch := ${UPSTREAM_BRANCH}"
         echo "override git_latest_tag := ${CALCULATED_TAG}"
-        
+
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
 
