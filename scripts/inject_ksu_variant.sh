@@ -143,7 +143,6 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         echo "[-] Error: Dynamic transplant requested but not supported for '${VARIANT}'." >&2
         exit 1
     fi
-fi
 
 # ========================================================================
 # STABLE / LEGACY VARIANTS
