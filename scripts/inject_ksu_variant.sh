@@ -91,11 +91,11 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         UPSTREAM_BRANCH="dev"
         CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
         
-    elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
-        echo ">>> [CANARY] Executing Automated Dynamic Transplant for ReSukiSU..."
+    elif [[ "${VARIANT}" == "ReSukiSU" || "${VARIANT}" == "SukiSU-Ultra" ]]; then
+        echo ">>> [CANARY] Executing Automated Dynamic Transplant for ${VARIANT}..."
         
-        echo ">>> 1. Cloning pristine official ReSukiSU..."
-        git clone https://github.com/ReSukiSU/ReSukiSU.git "${MANAGER_DIR}"
+        echo ">>> 1. Cloning pristine official ${VARIANT}..."
+        git clone "https://github.com/${VARIANT}/${VARIANT}.git" "${MANAGER_DIR}"
 
         # Prevent setup.sh from performing a redundant clone and execute it BEFORE transplanting
         ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
@@ -119,10 +119,10 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         git config --global user.name "GitHub Actions Canary"
 
         echo ">>> 3. Fetching and transplanting HEAD commit from canary branch..."
-        git fetch https://github.com/shoey63/ReSukiSU.git canary
+        git fetch "https://github.com/shoey63/${VARIANT}.git" canary
         
         if ! git cherry-pick FETCH_HEAD; then
-            echo "[-] CRITICAL: Merge conflict detected on ReSukiSU patch!"
+            echo "[-] CRITICAL: Merge conflict detected on ${VARIANT} patch!"
             echo ">>> Dumping conflict markers to console:"
             git --no-pager diff --diff-filter=U
             git cherry-pick --abort
@@ -135,7 +135,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         cd .. 
 
         # Lock in variables for the Kbuild Gatekeeper
-        UPSTREAM_REPO="ReSukiSU/ReSukiSU"
+        UPSTREAM_REPO="${VARIANT}/${VARIANT}"
         UPSTREAM_BRANCH="main"
         CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
     
