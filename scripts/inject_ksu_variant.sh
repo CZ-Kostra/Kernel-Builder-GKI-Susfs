@@ -13,11 +13,11 @@ case "${VARIANT}" in
     "KernelSU-Next")
         MANAGER_DIR="KernelSU-Next"
         ;;
-    "SukiSU-Ultra" | "ReSukiSU")
+    "SukiSU-Ultra" | "ReSukiSU" | "KernelSU")
         MANAGER_DIR="KernelSU"
         ;;
     *)
-        echo "[-] Error: Unsupported Variant '${VARIANT}'. Vanilla KernelSU is deprecated." >&2
+        echo "[-] Error: Unsupported Variant '${VARIANT}'. Selected variant not supported" >&2
         exit 1
         ;;
 esac
