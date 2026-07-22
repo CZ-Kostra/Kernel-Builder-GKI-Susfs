@@ -91,9 +91,9 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         UPSTREAM_BRANCH="dev"
         CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}")
         
-    elif [[ "${VARIANT}" == "ReSukiSU" || "${VARIANT}" == "SukiSU-Ultra" ]]; then
+    elif [[ "${VARIANT}" == "KernelSU" || "${VARIANT}" == "ReSukiSU" || "${VARIANT}" == "SukiSU-Ultra" ]]; then
         echo ">>> [CANARY] Executing Automated Dynamic Transplant for ${VARIANT}..."
-        
+
         echo ">>> 1. Cloning pristine official ${VARIANT}..."
         git clone "https://github.com/${VARIANT}/${VARIANT}.git" "${MANAGER_DIR}"
 
