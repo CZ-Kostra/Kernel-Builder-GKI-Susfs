@@ -33,6 +33,7 @@ on:
           - KernelSU-Next
           - SukiSU-Ultra
           - ReSukiSU
+          - KernelSU 
                  
       enable_ksu_susfs:
         description: "Integrate Root Manager and SUSFS?"
@@ -193,21 +194,21 @@ jobs:
           
           if [ "${{ inputs.build_channel }}" == "canary" ]; then
             
-            # Route KernelSU-Next, ReSukiSU, and SukiSU-Ultra to the dynamic engine
-            if [[ "${{ inputs.root_manager }}" == "KernelSU-Next" || "${{ inputs.root_manager }}" == "ReSukiSU" || "${{ inputs.root_manager }}" == "SukiSU-Ultra" ]]; then
+          # Route KernelSU, KernelSU-Next, ReSukiSU, and SukiSU-Ultra to the dynamic engine
+          if [[ "${{ inputs.root_manager }}" == "KernelSU" || "${{ inputs.root_manager }}" == "KernelSU-Next" || "${{ inputs.root_manager }}" == "ReSukiSU" || "${{ inputs.root_manager }}" == "SukiSU-Ultra" ]]; then
                echo ">>> Routing ${{ inputs.root_manager }} to Automated Dynamic Transplant..."
                echo "USE_DYNAMIC_TRANSPLANT=true" >> $GITHUB_ENV
                echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
                echo "KSU_VARIANT_REPO_URL=" >> $GITHUB_ENV
                echo "KSU_VARIANT_REF=" >> $GITHUB_ENV
-            else
+             else
                # Any future/unsupported variants will fall back here for now
                echo ">>> Routing ${{ inputs.root_manager }} to shoey63 Canary fork..."
                echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
                echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
                echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
                echo "KSU_VARIANT_REF=canary" >> $GITHUB_ENV
-            fi
+             fi
             
           else
             echo ">>> Routing to Safe Fallback Forks (Stable)..."
