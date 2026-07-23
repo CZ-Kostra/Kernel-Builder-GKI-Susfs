@@ -104,9 +104,6 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         echo ">>> 1. Cloning pristine official ${VARIANT}..."
         git clone "https://github.com/${REPO_OWNER}/${VARIANT}.git" "${MANAGER_DIR}"
 
-        echo ">>> 1. Cloning pristine official ${VARIANT}..."
-        git clone "https://github.com/${VARIANT}/${VARIANT}.git" "${MANAGER_DIR}"
-
         # Prevent setup.sh from performing a redundant clone and execute it BEFORE transplanting
         ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
         
