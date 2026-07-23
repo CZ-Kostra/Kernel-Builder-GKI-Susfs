@@ -94,6 +94,16 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
     elif [[ "${VARIANT}" == "KernelSU" || "${VARIANT}" == "ReSukiSU" || "${VARIANT}" == "SukiSU-Ultra" ]]; then
         echo ">>> [CANARY] Executing Automated Dynamic Transplant for ${VARIANT}..."
 
+        # Route to the correct GitHub organization/owner
+        if [[ "${VARIANT}" == "KernelSU" ]]; then
+            REPO_OWNER="tiann"
+        else
+            REPO_OWNER="${VARIANT}"
+        fi
+
+        echo ">>> 1. Cloning pristine official ${VARIANT}..."
+        git clone "https://github.com/${REPO_OWNER}/${VARIANT}.git" "${MANAGER_DIR}"
+
         echo ">>> 1. Cloning pristine official ${VARIANT}..."
         git clone "https://github.com/${VARIANT}/${VARIANT}.git" "${MANAGER_DIR}"
 
