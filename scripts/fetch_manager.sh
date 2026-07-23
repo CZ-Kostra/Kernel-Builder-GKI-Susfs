@@ -44,6 +44,8 @@ elif [[ "${VARIANT}" == "SukiSU-Ultra" ]]; then
     REPO="SukiSU-Ultra/SukiSU-Ultra"
 elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
     REPO="ReSukiSU/ReSukiSU"
+elif [[ "${VARIANT}" == "KernelSU" ]]; then
+    REPO="tiann/KernelSU"
 else
     echo "[-] Error: Unsupported Variant '${VARIANT}'. Vanilla KernelSU is deprecated." >&2
     exit 1
