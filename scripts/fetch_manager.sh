@@ -72,7 +72,7 @@ for ID in $RUN_IDS; do
     # Action Artifacts are always ZIPs. Prepends 'ARTIFACT|' for the download loop.
     DOWNLOAD_URLS=$(echo "$ARTIFACTS_JSON" | jq -r '
       .artifacts[]? 
-      | select(.name | test("(?i)manager"))
+      | select(.name | test("(?i)(manager|kernelsu[_-]v)"))
       | select(.name | test("(?i)(debug|mappings|gradle)") | not)
       | select(.name | test("(?i)(armeabi-v7a|universal|x86_64)") | not)
       | select(.expired == false)
@@ -96,11 +96,11 @@ if [ -z "$DOWNLOAD_URLS" ]; then
     # Identifies if the release asset is a .zip or .apk and tags it accordingly.
     DOWNLOAD_URLS=$(echo "$LATEST_RELEASE" | jq -r '
       .assets[]? 
-      | select(.name | test("(?i)manager"))
+      | select(.name | test("(?i)(manager|kernelsu[_-]v)"))
       | select(.name | test("(?i)(debug|mappings|gradle)") | not)
       | select(.name | test("(?i)(armeabi-v7a|universal|x86_64)") | not)
       | if (.name | test("(?i)\\.zip$")) then "RELEASE_ZIP|\(.url)" else "RELEASE_APK|\(.url)" end')
-      
+
     if [ -n "$DOWNLOAD_URLS" ]; then
         echo ">>> Success! Found fallback Manager asset(s) in the latest release."
     fi
