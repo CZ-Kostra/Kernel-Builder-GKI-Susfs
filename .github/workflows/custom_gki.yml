@@ -5,13 +5,13 @@ on:
   workflow_dispatch:
     inputs:      
       build_channel:
-        description: 'Build Channel'
+        description: 'Build Channel (switch to stable in case of errors/instability)'
         required: true
-        default: 'canary'
+        default: 'dynamic'
         type: choice
         options:
+          - dynamic
           - stable
-          - canary
 
       build_name:
         description: "Build Name"
@@ -192,7 +192,7 @@ jobs:
         run: |
           echo "=== Configuring Build Channel: ${{ inputs.build_channel }} ==="
           
-          if [ "${{ inputs.build_channel }}" == "canary" ]; then
+          if [ "${{ inputs.build_channel }}" == "dynamic" ]; then
             
           # Route KernelSU, KernelSU-Next, ReSukiSU, and SukiSU-Ultra to the dynamic engine
           if [[ "${{ inputs.root_manager }}" == "KernelSU" || "${{ inputs.root_manager }}" == "KernelSU-Next" || "${{ inputs.root_manager }}" == "ReSukiSU" || "${{ inputs.root_manager }}" == "SukiSU-Ultra" ]]; then
@@ -207,7 +207,7 @@ jobs:
                echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
                echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
                echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
-               echo "KSU_VARIANT_REF=canary" >> $GITHUB_ENV
+               echo "KSU_VARIANT_REF=stable" >> $GITHUB_ENV
              fi
             
           else
