@@ -126,8 +126,8 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         git config --global user.name "GitHub Actions Canary"
 
         echo ">>> 3. Fetching and cherry-picking susfs v 2.20 commit..."
-        git fetch "https://github.com/shoey63/${VARIANT}.git" stable
-        
+        git fetch "https://github.com/shoey63/${VARIANT}.git" $KSU_VARIANT_REF
+
         if ! git cherry-pick FETCH_HEAD; then
             echo "[-] CRITICAL: Merge conflict detected on ${VARIANT} patch!"
             echo ">>> Dumping conflict markers to console:"
