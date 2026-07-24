@@ -176,6 +176,12 @@ else
     elif [[ "${VARIANT}" == "ReSukiSU" ]]; then
         UPSTREAM_REPO="ReSukiSU/ReSukiSU"
         UPSTREAM_BRANCH="main"
+    elif [[ "${VARIANT}" == "KernelSU" ]]; then
+        UPSTREAM_REPO="tiann/KernelSU"
+        UPSTREAM_BRANCH="main"
+    else
+        echo "Error: Unknown variant '${VARIANT}'" >&2
+        exit 1
     fi
 
     echo ">>> Locating official upstream sync point for ${UPSTREAM_REPO}..."
