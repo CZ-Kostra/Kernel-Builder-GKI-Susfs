@@ -188,9 +188,9 @@ else
     git -C "${MANAGER_DIR}" fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" "${UPSTREAM_BRANCH}"
     RAW_BASE=$(git -C "${MANAGER_DIR}" merge-base HEAD FETCH_HEAD)
 
-    # Walk backward down the official mainline branch, ignoring bots
+    # Walk backward down the official mainline branch and fetch HEAD commit.
     set +o pipefail
-    UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H %an" | grep -m 1 -iv "dependabot" | awk '{print $1}')
+    UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H" -n 1)
     set -o pipefail
     
     # Calculate exact versions for the Sandbox Gatekeeper
