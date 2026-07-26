@@ -223,7 +223,7 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
         echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
         echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
-        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
+        echo "override KSU_COMMIT_SHA := ${SHORT_HASH}" 
 
         # --- SukiSU-Ultra Specific Namespaces ---
         echo "override LOCAL_COUNT := ${CALCULATED_COUNT}"
@@ -231,7 +231,7 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override git_short_sha := ${SHORT_HASH}"
         echo "override git_branch := ${UPSTREAM_BRANCH}"
         echo "override git_latest_tag := ${CALCULATED_TAG}"
-        
+
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
 
