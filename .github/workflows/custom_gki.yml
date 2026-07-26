@@ -12,6 +12,7 @@ on:
         options:
           - dynamic
           - stable
+          - test
 
       build_name:
         description: "Build Name"
@@ -215,7 +216,7 @@ jobs:
             echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
             echo "SUSFS_REPO_URL=https://gitlab.com/shoey63/susfs4ksu.git" >> $GITHUB_ENV
             echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
-            echo "KSU_VARIANT_REF=stable" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REF=${{ inputs.build_channel }}" >> $GITHUB_ENV
           fi
 
       - name: Setup repo tool
