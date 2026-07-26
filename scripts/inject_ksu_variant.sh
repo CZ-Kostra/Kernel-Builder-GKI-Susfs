@@ -219,6 +219,7 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
         # --- ReSukiSU Namespaces ---
+        echo "override LOCAL_GIT_EXISTS := 1"
         echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
         echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
         echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
