@@ -1,56 +1,60 @@
 # Universal GKI Kernel Builder CI
 
-An automated GitHub Actions workflow for building custom Android Generic Kernel Images (GKI). While explicitly tested on the Pixel 6 and Pixel 9/10 Pro XL, this pipeline is designed to be highly compatible with **any device that supports standard GKI architectures**.
+Welcome to the Universal GKI Kernel Builder! This repository hosts an automated, highly flexible GitHub Actions CI pipeline designed to compile custom GKI kernels directly from source. 
 
-This runner caters to advanced kernel modifications, supporting automated pulling, patching, and repacking of boot images. It is completely modular and engineered to seamlessly bypass restrictive build environments (like Bazel's strict sandboxing) to inject root solutions, mask modifications, and compile network/performance modules.
+Whether you need a pristine upstream kernel or a heavily modified build featuring advanced root hiding and systemless integrations, this pipeline builds exactly what you want, right when you want it.
 
-## Core Features
+## 🚀 Overview
 
-* **Automated Source Syncing:** Fetches pure AOSP/Pixel kernel branches directly from Google's manifest.
-* **Hermetic Sandbox Bypass (The "Gatekeeper"):** Uses preemptive GNU Make `override` directives to completely bypass the Kleaf/Bazel sandbox. This mathematically locks the Kernel to the exact Git commit counts of the upstream root managers without relying on brittle regex hacks.
-* **Native Multi-Variant Root Integration:** Automated cloning and native variable injection for **KernelSU**, **KernelSU-Next**, **SukiSU-Ultra**, and **ReSukiSU**. The pipeline feeds raw Git data to the compiler, allowing each fork to seamlessly calculate its own unique offset math for perfect version parity.
-* **Zero-Touch Manager Synchronization:** The pipeline automatically tracks the upstream divergence point, queries the GitHub API, and downloads the exact matching Manager APK for your specific kernel build. No more version mismatch errors.
-* **Resilient WireGuard Integration:** Injects WireGuard and Android Netd routing hooks while relying on the Linux kernel's internal dependency resolver to pull NEON hardware crypto accelerations. This future-proofs the build against fatal Strict Fragment Checking crashes on 6.12+ kernels.
-* **Rejection Resolution & SUSFS:** Built-in hooks to automatically resolve known SUSFS patch rejections in the common tree.
-* **Environment Sanitizing:** Neutralizes ABI protected exports and uses the official Google commit hash and Unix timestamp to facilitate build environment and kernel string integrity.
-* **Targeted Payload Extraction:** Scans the remote OTA URL and streams only the `boot` partition directly from the source via `payload_dumper`, completely bypassing the need to download the massive multi-gigabyte OTA ZIP.
-* **Automated Packaging:** Hot-swaps the compiled kernel `Image` into the stock boot image using `magiskboot`, or automatically generates an AnyKernel3 flashable zip if no OTA is provided.
+The core philosophy of this project is **Dynamic Generation over Bulk Compilation**. 
 
-## Workflow Inputs
+Unlike massive kernel distribution repositories (like WildKernels) that compile hundreds of generic permutations on a fixed schedule, this CI is designed to be a personal build engine. When you trigger a workflow, the pipeline dynamically resolves the correct Google manifest branches, fetches the absolute latest source code for your chosen root environment, and integrates stealth patches on the fly. 
 
-Trigger the workflow manually via the **Actions** tab. The pipeline accepts the following variables:
+The result? You get one single, tailor-made kernel artifact and its exact matching manager APK, perfectly synced with the upstream ecosystem.
 
-| Input | Default | Description |
-| :--- | :--- | :--- |
-| `build_name` | `""` | (Required) Identifier for the build artifact (e.g., `komodo-cp1a`). |
-| `root_manager` | `KernelSU-Next` | Select the Root Environment to integrate (`KernelSU`, `KernelSU-Next`, `SukiSU-Ultra`, `ReSukiSU`). |
-| `enable_ksu_susfs` | `true` | Toggles root manager and SUSFS integrations. Uncheck for a pure stock build. |
-| `target_version` | `""` | (Required) The specific kernel version to target. The pipeline automatically resolves this to the correct manifest branch. |
-| `ota_url` | `""` | Direct link to the official OTA `.zip`. Required if you want the runner to automatically repack the kernel into a flashable `boot.img`. |
-| `build_wg` | `false` | Injects custom Kconfig integrations (Bazel fragments or legacy Make) to compile WireGuard natively into the kernel. |
+### ✨ Key Points of Difference
+* **No Waiting for Updates:** You don't have to wait for a maintainer to trigger a batch build. If Google drops a new GKI update, or KernelSU merges a new commit, you can build it yourself immediately.
+* **Bleeding Edge by Default:** The `dynamic` build channel pulls the latest upstream commits for the Linux kernel, your chosen root manager, and SuSFS every single time you run it. 
+* **Precision Output:** Instead of sifting through hundreds of zip files to find your device's specific combination, the CI builds exactly what you ask for and packages it cleanly.
+* **Guaranteed Version Matching:** The pipeline automatically fetches the exact Manager APK that matches the root environment source code used during compilation. No more signature mismatches or incompatible userspace apps.
+* **Safe Fallbacks:** If the bleeding-edge upstream commits break compilation, you can instantly toggle the CI to the `stable` channel to build from verified, safe forks.
 
-> **Note on Repacking:** If an `ota_url` is omitted or invalid, or the ZIP does not contain a standard `payload.bin` at its root, the runner will automatically degrade gracefully to generating an AnyKernel3 (AK3) flashable zip containing your compiled kernel `Image`, completely skipping the stock boot image repacking phase.
+## ⚙️ Features
+* **Multiple Root Managers:** Native integration support for `KernelSU`, `KernelSU-Next`, `SukiSU-Ultra`, and `ReSukiSU`.
+* **SuSFS Integration:** Automated patching and macro injection for SuSFS to enable advanced path hiding, kstat spoofing, and mount masking.
+* **ZeroMount VFS:** Optional integration for stealth overlay mounting.
+* **WireGuard Support:** Optional native WireGuard module compilation.
+* **Flexible Packaging:** Outputs a standard `AnyKernel3` (AK3) flashable zip by default. If you provide a full OTA URL, it will extract, patch, and repack a raw `boot.img` for direct fastboot flashing.
 
-## Artifacts & Installation
+---
 
-Because custom root forks frequently update their API protocols, this pipeline dynamically locks the CI version strings to the exact upstream commit prior to custom modifications. 
+## 🛠️ How to Use
 
-You no longer need to hunt for the correct Manager APK. The CI handles version symmetry automatically.
+To start building your own custom kernels, follow these steps:
 
-1. Once the GitHub Action completes successfully, click on the workflow run.
-2. Scroll down to the **Artifacts** section.
-3. Download your compiled kernel artifact (either the repacked `boot.img` or the `AK3` zip).
-4. Download the `*-Manager` artifact. This is the exact Manager APK compiled from the synced upstream commit. Install this APK to ensure perfect synchronization with your newly flashed kernel.
+### 1. Fork the Repository
+Click the **Fork** button at the top right of this page to create your own copy of the repository.
 
-## Repository Structure
+### 2. Enable GitHub Actions
+In your forked repository, navigate to the **Actions** tab. You will likely see a warning that workflows are disabled. Click **"I understand my workflows, go ahead and enable them"**.
 
-The workflow delegates tasks to specialized scripts to keep the YAML clean and highly modular:
+### 3. Trigger a Build
+1. Still on the **Actions** tab, select **Build Custom GKI** from the left sidebar.
+2. Click the **Run workflow** dropdown on the right side of the screen.
+3. Fill out the configuration parameters for your build:
 
-* `scripts/build_kernel.sh`: Wraps the Kleaf/Bazel build process (with a legacy 5.10 Hermetic Make fallback), injects Google identity cloaking variables, and outputs a WireGuard configuration validation report.
-* `scripts/configure_kconfigs.sh`: Neutralizes ABI protected exports and securely injects Kconfig fragments for WireGuard, relying on native Kconfig logic to resolve dependencies.
-* `scripts/inject_ksu_variant.sh`: Handles cloning of your chosen Root Manager variant and utilizes the "Gatekeeper" GNU Make overrides to feed native versioning math to the compiler, completely bypassing the Kleaf sandbox.
-* `scripts/integrate_susfs_next.sh`: Clones the designated SUSFS variant and handles common-side file transfers and patching.
-* `scripts/custom_patches.sh`: A blank canvas executed prior to compilation. Use this to apply standard kernel tweaks, such as custom CPU governors or scheduler modifications. 
-* `scripts/fix_susfs_rejections.sh`: A targeted `sed` routine to force-inject SUSFS headers into `exec.c`, `base.c`, and `namespace.c` if standard patching fails.
-* `scripts/validate_ota.py` & `scripts/ota_pull.py`: Evaluates the OTA URL and executes the payload extraction.
-* `scripts/boot_swap.sh`: Wraps Magiskboot to unpack the stock image, swap the core kernel, and repack the final artifact.
+| Parameter | Description |
+| :--- | :--- |
+| **Build Channel** | Choose `dynamic` (latest upstream commits) or `stable` (fallback to verified forks if dynamic fails). |
+| **Build Name** | A custom name for your output artifact (e.g., `Pixel_10_Pro_Testing`). |
+| **Kernel Version** | The exact GKI target version you wish to build (e.g., `6.6.127`). |
+| **Root Environment** | Select your preferred root manager from the dropdown list. |
+| **Integrate SUSFS** | Check to enable advanced stealth and hiding features. |
+| **Integrate ZeroMount** | Check to include the ZeroMount VFS module. |
+| **Build WireGuard** | Check to compile WireGuard support into the kernel. |
+| **OTA URL (Optional)** | Leave blank to output an `AnyKernel3` zip. Provide a direct link to a full OTA zip to output a pre-patched `boot.img`. |
+
+4. Click **Run workflow**.
+
+### 4. Download Your Artifacts
+Once the CI pipeline completes successfully, scroll to the bottom of the workflow summary page. Under the **Artifacts** section, you will find your compiled kernel (either an AK3 zip or a repacked boot image) alongside the exact Manager APK required to control it. Download, flash, and enjoy!
