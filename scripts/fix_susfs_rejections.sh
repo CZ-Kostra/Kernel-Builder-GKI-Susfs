@@ -153,8 +153,8 @@ fi
 
 # 5.5 Fix fs/namei.c API Mismatch (4 args to 3 args for older kernels)
 echo ">>> Fixing set_nameidata API mismatch in fs/namei.c..."
-if grep -q "set_nameidata(nd, old_dfd, fake_filename, NULL);" common/fs/namei.c; then
-  sed -i 's/set_nameidata(nd, old_dfd, fake_filename, NULL);/set_nameidata(nd, old_dfd, fake_filename);/g' common/fs/namei.c
+if grep -q "set_nameidata(nd,.*old_dfd,.*fake_filename,.*NULL);" common/fs/namei.c; then
+  sed -i 's/set_nameidata(nd,[[:space:]]*old_dfd,[[:space:]]*fake_filename,[[:space:]]*NULL);/set_nameidata(nd, old_dfd, fake_filename);/g' common/fs/namei.c
   echo "  -> fs/namei.c API mismatch resolved!"
 else
   echo "  -> No set_nameidata mismatch found in fs/namei.c."
