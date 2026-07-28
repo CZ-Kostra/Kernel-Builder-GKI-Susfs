@@ -153,11 +153,18 @@ fi
 
 # 5.5 Fix fs/namei.c API Mismatch (4 args to 3 args for older kernels)
 echo ">>> Fixing set_nameidata API mismatch in fs/namei.c..."
-if grep -q "set_nameidata(nd,.*old_dfd,.*fake_filename,.*NULL);" common/fs/namei.c; then
+
+# Extract kernel version dynamically from Makefile
+K_VER=$(grep "^VERSION =" common/Makefile | tr -d ' ' | cut -d'=' -f2)
+K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2)
+
+# Only downgrade the arguments if building 5.10
+if [ "$K_VER" = "5" ] && [ "$K_PATCH" = "10" ]; then
+  echo "  -> Kernel 5.10 detected. Downgrading set_nameidata to 3 arguments..."
   sed -i 's/set_nameidata(nd,[[:space:]]*old_dfd,[[:space:]]*fake_filename,[[:space:]]*NULL);/set_nameidata(nd, old_dfd, fake_filename);/g' common/fs/namei.c
-  echo "  -> fs/namei.c API mismatch resolved!"
+  echo "  -> fs/namei.c API mismatch resolved for 5.10!"
 else
-  echo "  -> No set_nameidata mismatch found in fs/namei.c."
+  echo "  -> Kernel $K_VER.$K_PATCH detected. Natively expects 4 arguments. Skipping downgrade."
 fi
 
 # 6. Final Validation
