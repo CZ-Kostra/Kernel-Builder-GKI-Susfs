@@ -1,5 +1,7 @@
 name: Universal GKI Kernel Builder CI
-run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+# run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ inputs.build_channel }}]"
+
 
 on:
   workflow_dispatch:
@@ -17,18 +19,19 @@ on:
       build_name:
         description: "Build Name"
         required: true
-        default: ""
+        default: "A12-5.10-lts_KSUN-"
         type: string
 
       target_version:
         description: "Kernel Version"
         required: true
+        default: "common-android12-5.10-lts"
         type: string        
         
       root_manager:
         description: "Root Environment"
         required: false
-        default: ""
+        default: "KernelSU-Next"
         type: choice
         options:
           - KernelSU-Next
