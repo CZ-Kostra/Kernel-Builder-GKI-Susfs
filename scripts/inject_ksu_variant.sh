@@ -49,7 +49,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
 
         # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
         # Walk backward from HEAD, ignoring commits that ONLY touch website/docs
-        UPSTREAM_HASH=$(git log -n 1 --format="%H" -- . ":!website" ":!docs")
+        UPSTREAM_HASH=$(git log -n 1 --format="%H" -- . ":!website/" ":!docs/")
 
         echo ">>> 2. Scraping the latest official release tag..."
         CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
@@ -117,7 +117,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
         cd "${MANAGER_DIR}"
 
         # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
-        UPSTREAM_HASH=$(git log -n 1 --format="%H")
+        UPSTREAM_HASH=$(git log -n 1 --format="%H" -- . ":!website/" ":!docs/")
 
         echo ">>> 2. Scraping the latest official release tag..."
         CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
@@ -192,7 +192,7 @@ else
 
     # Walk backward down the official mainline branch, ignoring commits that ONLY touch website/docs
     set +o pipefail
-    UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website" ":!docs")
+    UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website/" ":!docs/")
     set -o pipefail
     
     # Calculate exact versions for the Sandbox Gatekeeper
