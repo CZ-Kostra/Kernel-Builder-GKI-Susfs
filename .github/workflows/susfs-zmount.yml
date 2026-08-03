@@ -267,7 +267,7 @@ jobs:
           SUSFS_NEXT_URL: ${{ env.SUSFS_REPO_URL }}
           SUSFS_NEXT_REF: ${{ env.SUSFS_BRANCH }}
         run: |
-          bash ./scripts/integrate_susfs_next.sh
+          bash ./scripts/integrate_susfs.sh
 
       - name: Fix SUSFS Patch Rejections
         if: inputs.enable_ksu_susfs == true
