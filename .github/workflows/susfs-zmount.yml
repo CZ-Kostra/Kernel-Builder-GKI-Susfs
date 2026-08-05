@@ -417,11 +417,16 @@ jobs:
           git clone --depth=1 -b "$KSU_VARIANT_REF" "$KSU_VARIANT_REPO_URL" custom_manager_src
           
           cd custom_manager_src/manager
+          
+          # Point Gradle to the runner's pre-installed Android SDK
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          
           chmod +x gradlew
           ./gradlew assembleRelease
           
           echo ">>> Moving compiled APK to artifact directory..."
           mkdir -p ../../manager_apk
+          
           # Try specific release path first, fallback to recursive wildcard if needed
           cp app/build/outputs/apk/release/*.apk ../../manager_apk/ 2>/dev/null || cp app/build/outputs/apk/**/*.apk ../../manager_apk/
 
