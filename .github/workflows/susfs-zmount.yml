@@ -439,16 +439,19 @@ jobs:
           # The magic trick: copy the executable and disguise it as a .so library
           cp target/aarch64-linux-android/release/ksud ../../manager/app/src/main/jniLibs/arm64-v8a/libksud.so
           cp target/x86_64-linux-android/release/ksud ../../manager/app/src/main/jniLibs/x86_64/libksud.so
-          
-          cd ../../manager
+                    cd ../../manager
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           
           chmod +x gradlew
-          ./gradlew assembleRelease
+          
+          # Tell Gradle to build the debug variant using the repo's static keystore
+          ./gradlew assembleDebug
           
           echo ">>> Moving compiled APK to artifact directory..."
           mkdir -p ../../manager_apk
-          cp app/build/outputs/apk/release/*.apk ../../manager_apk/ 2>/dev/null || cp app/build/outputs/apk/**/*.apk ../../manager_apk/
+          
+          # Point the copy command to the 'debug' output folder instead of 'release'
+          cp app/build/outputs/apk/debug/*.apk ../../manager_apk/ 2>/dev/null || cp app/build/outputs/apk/**/*.apk ../../manager_apk/
 
       # ---------------------------------------------------------
       # MODIFIED: Fetch upstream APK on 'dynamic' or 'stable', bypass on 'test'
