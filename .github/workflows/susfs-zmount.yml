@@ -407,6 +407,14 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
 
+      - name: Setup Rust & Cargo-NDK
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
+        run: |
+          echo ">>> Setting up Rust targets for Android..."
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+          echo ">>> Installing cargo-ndk..."
+          cargo install cargo-ndk
+
       - name: Build Custom Manager APK (Test Channel)
         if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
         env:
@@ -414,9 +422,16 @@ jobs:
           KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
         run: |
           echo ">>> Compiling custom manager from $KSU_VARIANT_REPO_URL branch $KSU_VARIANT_REF..."
-          git clone --depth=1 -b "$KSU_VARIANT_REF" "$KSU_VARIANT_REPO_URL" custom_manager_src
           
-          cd custom_manager_src/manager
+          # MODIFIED: --recursive pulls submodules (ksud), removing --depth=1 keeps tags for versioning
+          git clone --recursive -b "$KSU_VARIANT_REF" "$KSU_VARIANT_REPO_URL" custom_manager_src
+          
+          cd custom_manager_src
+          
+          # Safety net: explicitly fetch all tags so Gradle's 'git describe' gets the correct version
+          git fetch --tags
+          
+          cd manager
           
           # Point Gradle to the runner's pre-installed Android SDK
           echo "sdk.dir=$ANDROID_HOME" > local.properties
