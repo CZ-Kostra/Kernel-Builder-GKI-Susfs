@@ -423,17 +423,24 @@ jobs:
         run: |
           echo ">>> Compiling custom manager from $KSU_VARIANT_REPO_URL branch $KSU_VARIANT_REF..."
           
-          # MODIFIED: --recursive pulls submodules (ksud), removing --depth=1 keeps tags for versioning
           git clone --recursive -b "$KSU_VARIANT_REF" "$KSU_VARIANT_REPO_URL" custom_manager_src
-          
           cd custom_manager_src
-          
-          # Safety net: explicitly fetch all tags so Gradle's 'git describe' gets the correct version
           git fetch --tags
           
-          cd manager
+          echo ">>> Compiling ksud native binaries..."
+          cd userspace/ksud
+          # Use cargo-ndk to automatically handle Android NDK linkers
+          cargo ndk -t arm64-v8a -t x86_64 build --release
           
-          # Point Gradle to the runner's pre-installed Android SDK
+          echo ">>> Injecting ksud into Manager jniLibs..."
+          mkdir -p ../../manager/app/src/main/jniLibs/arm64-v8a
+          mkdir -p ../../manager/app/src/main/jniLibs/x86_64
+          
+          # The magic trick: copy the executable and disguise it as a .so library
+          cp target/aarch64-linux-android/release/ksud ../../manager/app/src/main/jniLibs/arm64-v8a/libksud.so
+          cp target/x86_64-linux-android/release/ksud ../../manager/app/src/main/jniLibs/x86_64/libksud.so
+          
+          cd ../../manager
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           
           chmod +x gradlew
@@ -441,8 +448,6 @@ jobs:
           
           echo ">>> Moving compiled APK to artifact directory..."
           mkdir -p ../../manager_apk
-          
-          # Try specific release path first, fallback to recursive wildcard if needed
           cp app/build/outputs/apk/release/*.apk ../../manager_apk/ 2>/dev/null || cp app/build/outputs/apk/**/*.apk ../../manager_apk/
 
       # ---------------------------------------------------------
