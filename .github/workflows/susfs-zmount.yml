@@ -205,7 +205,7 @@ jobs:
              fi
             
           else
-            echo ">>> Routing to Safe Fallback Forks (Stable)..."
+            echo ">>> Routing to Safe Fallback Forks (Stable/Test)..."
             echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
             echo "SUSFS_REPO_URL=https://gitlab.com/shoey63/susfs4ksu.git" >> $GITHUB_ENV
             echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
@@ -397,8 +397,39 @@ jobs:
           echo ">>> Final Artifact Directory:"
           ls -lah out/final/
 
+      # ---------------------------------------------------------
+      # NEW: Compile custom Manager from source ONLY on 'test' channel
+      # ---------------------------------------------------------
+      - name: Setup Java for Custom Manager Build
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Build Custom Manager APK (Test Channel)
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
+        env:
+          KSU_VARIANT_REPO_URL: ${{ env.KSU_VARIANT_REPO_URL }}
+          KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
+        run: |
+          echo ">>> Compiling custom manager from $KSU_VARIANT_REPO_URL branch $KSU_VARIANT_REF..."
+          git clone --depth=1 -b "$KSU_VARIANT_REF" "$KSU_VARIANT_REPO_URL" custom_manager_src
+          
+          cd custom_manager_src/manager
+          chmod +x gradlew
+          ./gradlew assembleRelease
+          
+          echo ">>> Moving compiled APK to artifact directory..."
+          mkdir -p ../../manager_apk
+          # Try specific release path first, fallback to recursive wildcard if needed
+          cp app/build/outputs/apk/release/*.apk ../../manager_apk/ 2>/dev/null || cp app/build/outputs/apk/**/*.apk ../../manager_apk/
+
+      # ---------------------------------------------------------
+      # MODIFIED: Fetch upstream APK on 'dynamic' or 'stable', bypass on 'test'
+      # ---------------------------------------------------------
       - name: Fetch Matching Manager APK
-        if: inputs.enable_ksu_susfs == true
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel != 'test'
         id: fetch_manager
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
