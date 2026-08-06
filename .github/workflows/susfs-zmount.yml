@@ -239,6 +239,7 @@ jobs:
           KSU_VARIANT_REPO_URL: ${{ env.KSU_VARIANT_REPO_URL }}
           KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
           USE_DYNAMIC_TRANSPLANT: ${{ env.USE_DYNAMIC_TRANSPLANT }}
+          BUILD_CHANNEL: ${{ inputs.build_channel }}
         run: |
           bash ./scripts/inject_ksu_variant.sh "${{ inputs.root_manager }}"
 
