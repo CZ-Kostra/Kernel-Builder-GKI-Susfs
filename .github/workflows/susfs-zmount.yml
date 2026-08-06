@@ -402,14 +402,14 @@ jobs:
       # NEW: Compile custom Manager from source ONLY on 'test' channel
       # ---------------------------------------------------------
       - name: Setup Java for Custom Manager Build
-        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test' && inputs.root_manager == 'KernelSU-Next'
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
 
       - name: Setup Rust & Cargo-NDK
-        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test' && inputs.root_manager == 'KernelSU-Next'
         run: |
           echo ">>> Setting up Rust targets for Android..."
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
@@ -417,7 +417,7 @@ jobs:
           cargo install cargo-ndk
 
       - name: Build Custom Manager APK (Test Channel)
-        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test'
+        if: inputs.enable_ksu_susfs == true && inputs.build_channel == 'test' && inputs.root_manager == 'KernelSU-Next'
         env:
           KSU_VARIANT_REPO_URL: ${{ env.KSU_VARIANT_REPO_URL }}
           KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
@@ -458,7 +458,7 @@ jobs:
       # MODIFIED: Fetch upstream APK on 'dynamic' or 'stable', bypass on 'test'
       # ---------------------------------------------------------
       - name: Fetch Matching Manager APK
-        if: inputs.enable_ksu_susfs == true && inputs.build_channel != 'test'
+        if: inputs.enable_ksu_susfs == true && (inputs.build_channel != 'test' || inputs.root_manager != 'KernelSU-Next')
         id: fetch_manager
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
