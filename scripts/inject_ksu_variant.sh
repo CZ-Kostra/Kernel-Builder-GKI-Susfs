@@ -186,9 +186,9 @@ else
         exit 1
     fi
 
-    # If building custom manager on test channel, use HEAD so kernel and APK versions match perfectly.
-    if [[ "${BUILD_CHANNEL}" == "test" ]]; then
-        echo ">>> [TEST CHANNEL] Bypassing upstream sync. Using custom HEAD for version match..."
+    # If building custom manager on test channel for KernelSU-Next, use HEAD so kernel and APK versions match perfectly.
+    if [[ "${BUILD_CHANNEL}" == "test" && "${VARIANT}" == "KernelSU-Next" ]]; then
+        echo ">>> [TEST CHANNEL] Bypassing upstream sync for KernelSU-Next. Using custom HEAD for version match..."
         UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" rev-parse HEAD)
     else
         echo ">>> Locating official upstream sync point for ${UPSTREAM_REPO}..."
@@ -200,7 +200,6 @@ else
         UPSTREAM_HASH=$(git -C "${MANAGER_DIR}" log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
         set -o pipefail
     fi
-
     
     # Calculate exact versions for the Sandbox Gatekeeper
     CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
