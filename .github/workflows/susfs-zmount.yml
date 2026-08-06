@@ -1,5 +1,6 @@
 name: Universal GKI Kernel Builder CI
-run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+### run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ inputs.build_channel }}]"
 
 on:
   workflow_dispatch:
@@ -17,18 +18,19 @@ on:
       build_name:
         description: "Build Name"
         required: true
-        default: ""
+        default: "A12-5.10-lts_KSUN-"
         type: string
 
       target_version:
         description: "Kernel Version"
         required: true
+        default: "common-android12-5.10-lts"
         type: string        
         
       root_manager:
         description: "Root Environment"
         required: false
-        default: ""
+        default: "KernelSU-Next"
         type: choice
         options:
           - KernelSU-Next
@@ -381,7 +383,8 @@ jobs:
           else
             echo ">>> OTA Repack detected. Outputting standard boot image and AK3 zip."
             # Use the sanitized name for the parent artifact zip
-            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}" >> $GITHUB_ENV
+            ### echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}-AK3" >> $GITHUB_ENV
             
             # Generate the specific AK3 zip for inclusion in the artifact
             git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
