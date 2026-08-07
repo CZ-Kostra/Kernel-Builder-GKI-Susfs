@@ -152,20 +152,26 @@ if [ -f "common/mm/rmap.c.rej" ]; then
 fi
 
 # 5.5 Fix fs/namei.c API Mismatch (4 args to 3 args for older kernels)
-echo ">>> Fixing set_nameidata API mismatch in fs/namei.c..."
+echo ">>> Checking set_nameidata API mismatch in fs/namei.c..."
 
 # Extract kernel version dynamically from Makefile
 K_VER=$(grep "^VERSION =" common/Makefile | tr -d ' ' | cut -d'=' -f2)
 K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2)
 
-# Only downgrade the arguments if building 5.10
+# Only check if building 5.10
 if [ "$K_VER" = "5" ] && [ "$K_PATCH" = "10" ]; then
-  echo "  -> Kernel 5.10 detected. Downgrading set_nameidata to 3 arguments..."
-  sed -i 's/set_nameidata(nd,[[:space:]]*old_dfd,[[:space:]]*fake_filename,[[:space:]]*NULL);/set_nameidata(nd, old_dfd, fake_filename);/g' common/fs/namei.c
-  echo "  -> fs/namei.c API mismatch resolved for 5.10!"
+  # Check if the 4-arg version exists (in case upstream missed a branch)
+  if grep -q "set_nameidata(nd,.*NULL);" common/fs/namei.c; then
+    echo "  -> Kernel 5.10 detected with 4-arg set_nameidata. Downgrading to 3 arguments..."
+    sed -i 's/set_nameidata(nd,[[:space:]]*old_dfd,[[:space:]]*fake_filename,[[:space:]]*NULL);/set_nameidata(nd, old_dfd, fake_filename);/g' common/fs/namei.c
+    echo "  -> fs/namei.c API mismatch resolved for 5.10!"
+  else
+    echo "  -> Kernel 5.10 detected, but 3-arg set_nameidata is already present (Upstream patched). Skipping."
+  fi
 else
-  echo "  -> Kernel $K_VER.$K_PATCH detected. Natively expects 4 arguments. Skipping downgrade."
+  echo "  -> Kernel $K_VER.$K_PATCH detected. Natively expects 4 arguments. Skipping."
 fi
+
 
 # 6. Final Validation
 echo ">>> Checking for unresolved patch rejections..."

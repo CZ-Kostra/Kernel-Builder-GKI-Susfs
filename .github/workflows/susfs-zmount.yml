@@ -43,7 +43,7 @@ on:
         default: true
      
       enable_zero_mount:
-        description: "Integrate ZeroMount VFS?"
+        description: "Integrate ZeroMount VFS? (caution!- experimental)"
         required: false
         type: boolean
         default: false

@@ -1,4 +1,5 @@
 # Universal GKI Kernel Builder CI
+### (Pure GKI 2.0 only)
 
 Welcome to the Universal GKI Kernel Builder! This repository hosts an automated, highly flexible GitHub Actions CI pipeline designed to compile custom GKI kernels directly from source. 
 
