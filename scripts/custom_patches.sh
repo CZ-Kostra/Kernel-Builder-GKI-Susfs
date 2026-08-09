@@ -1,18 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # scripts/custom_patches.sh
-# Router script to delegate patching to variant-specific modular scripts.
+# Source code modifications and C/Header tweaks
+# (Note: Kconfig modifications belong in scripts/configure_kconfigs.sh via Bazel fragments)
 
 set -euo pipefail
 
-echo ">>> Evaluating target variant: ${SU_VARIANT}"
+echo ">>> Applying custom source code patches..."
 
-# Map directly to the exact variant name
-SCRIPT_PATH="scripts/patchfix_${SU_VARIANT}.sh"
+# cd kernel_workspace/common
 
-if [ -f "$SCRIPT_PATH" ]; then
-    echo ">>> Delegating to modular patch script: $SCRIPT_PATH"
-    chmod +x "$SCRIPT_PATH"
-    exec bash "$SCRIPT_PATH"
-else
-    echo "[-] No modular script found at $SCRIPT_PATH! Proceeding without custom patches."
-fi
+# ========================================================================
+# PLACEHOLDER: Add your raw source code modifications here
+# ========================================================================
+
+# Example 1: Suppressing a specific noisy driver warning in source
+# sed -i 's/pr_warn("noisy driver warning/pr_debug("noisy driver warning/' drivers/misc/noisy_driver.c
+
+# Example 2: Hardcoding an aggressive compiler flag into a specific subsystem
+# echo "ccflags-y += -O3" >> fs/Makefile
+
+echo ">>> Source code customizations complete."
