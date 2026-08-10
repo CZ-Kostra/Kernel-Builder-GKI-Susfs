@@ -20,7 +20,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
     
     cd "${MANAGER_DIR}"
 
-    # CAPTURE THIS IMMEDIATELY BEFORE ANY CHERRY-PICKS!
+    # CAPTURE THIS IMMEDIATELY BEFORE ANY MERGING!
     UPSTREAM_HASH=$(git log -n 1 --format="%H" -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
     echo "  -> Target Tag: $CALCULATED_TAG"
@@ -29,27 +29,18 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
     git remote add pershoot https://github.com/pershoot/KernelSU-Next.git
     git fetch pershoot dev-susfs
 
-    echo ">>> 3. Calculating the merge-base for SuSFS commits..."
-    MERGE_BASE=$(git merge-base HEAD pershoot/dev-susfs)
-
-    echo ">>> 4. Generating dynamic commit list (Filtering out CI hacks)..."
-    VALID_COMMITS=$(git log --reverse --format="%H %s" ${MERGE_BASE}..pershoot/dev-susfs | grep -v -i -E "setup:|manager" | awk '{print $1}')
-
     echo ">>> Configuring dummy Git identity for transplant operations..."
     git config --global user.email "runner@github.actions"
     git config --global user.name "GitHub Actions Canary"
 
-    echo ">>> 5. Transplanting pure SuSFS commits onto upstream tree..."
-    for commit in $VALID_COMMITS; do
-        COMMIT_TITLE=$(git log --format="%s" -n 1 "$commit")
-        echo "  -> Transplanting: $COMMIT_TITLE"
-        if ! git cherry-pick "$commit"; then
-            echo "[-] CRITICAL: Merge conflict detected on commit: $commit"
-            git --no-pager diff --diff-filter=U
-            git cherry-pick --abort
-            exit 1
-        fi
-    done
+    echo ">>> 3. Squashing and merging SuSFS features onto upstream tree..."
+    if ! git merge --squash pershoot/dev-susfs; then
+        echo "[-] CRITICAL: Merge conflict detected during squash merge!"
+        git --no-pager diff --diff-filter=U
+        exit 1
+    fi
+    
+    git commit -m "Merge susfs features from pershoot"
 
     # Lock in variables for the Kbuild Gatekeeper
     UPSTREAM_BRANCH="dev"
