@@ -15,13 +15,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Make scripts executable
-        run: |
-          chmod +x scripts/update_kernel_db.sh
-          chmod +x scripts/generate_full_db.py
-
       - name: Run Database Update
-        run: ./scripts/update_kernel_db.sh
+        run: python3 scripts/maintain_kernel_db.py
 
       - name: Commit and Push Changes
         run: |
