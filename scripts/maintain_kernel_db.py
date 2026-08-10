@@ -7,8 +7,9 @@ import time
 DB_FILE = "tools/master_kernel_db.json"
 REPO_URL = "https://android.googlesource.com/kernel/common"
 
-def get_gitiles_json(url, retries=3):
-    """Fetches and cleans Gitiles API JSON output with retry logic."""
+def get_gitiles_json(url, retries=5):
+    """Fetches and cleans Gitiles API JSON output with exponential backoff."""
+    base_delay = 3
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Termux-CI-Builder/2.0'})
@@ -18,21 +19,37 @@ def get_gitiles_json(url, retries=3):
                 if data.startswith(")]}'"):
                     data = data.split('\n', 1)[1]
                 return json.loads(data)
-        except Exception as e:
-            print(f"\n     [-] Network error on attempt {attempt + 1}: {e}")
+                
+        except urllib.error.HTTPError as e:
+            print(f"\n     [-] HTTP Error on attempt {attempt + 1}: {e.code} {e.reason}")
             if attempt < retries - 1:
-                print(f"     [*] Retrying in 3 seconds...")
-                time.sleep(3)
+                # Exponential backoff: 3s, 6s, 12s, 24s
+                sleep_time = base_delay * (2 ** attempt)
+                if e.code == 429:
+                    print(f"     [*] Rate limited! Backing off for {sleep_time} seconds...")
+                else:
+                    print(f"     [*] Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
             else:
                 print(f"     [-] Failed after {retries} attempts. Skipping page.")
                 return None
-
+                
+        except Exception as e:
+            print(f"\n     [-] Network error on attempt {attempt + 1}: {e}")
+            if attempt < retries - 1:
+                sleep_time = base_delay * (2 ** attempt)
+                print(f"     [*] Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
+            else:
+                print(f"     [-] Failed after {retries} attempts. Skipping page.")
+                return None
+                
 def main():
     print("[*] Initializing Unified Kernel DB Maintainer...")
     
     database = {}
     is_incremental = False
-    commit_depth = 30000
+    commit_depth = 25000
 
     # 1. State check: Full build vs Incremental update
     if os.path.exists(DB_FILE):
@@ -45,10 +62,10 @@ def main():
         except Exception as e:
             print(f"[-] Failed to load existing DB: {e}. Defaulting to Full Build.")
             is_incremental = False
-            commit_depth = 30000
+            commit_depth = 25000
             database = {}
     else:
-        print(f"[!] Database not found at '{DB_FILE}'. Triggering Full Historical Build (Depth: 30000).")
+        print(f"[!] Database not found at '{DB_FILE}'. Triggering Full Historical Build (Depth: 25000).")
 
     # 2. Fetch all remote branches
     print("[*] Fetching active KMI and LTS branches from kernel/common...")
@@ -88,13 +105,25 @@ def main():
     tag_pattern = re.compile(r"Merge tag 'android\d+-(\d+\.\d+\.\d+)_r\w*'")
     added_count = 0
     upgraded_count = 0
-
+    
     for b in valid_branches:
         base = b["base_ver"]
         if base not in database:
             database[base] = []
 
-        print(f"\n  -> Scanning branch: {b['branch']} ...")
+        # --- DYNAMIC DEPTH LOGIC ---
+        if not is_incremental:
+            # Full build: Deep scan only the foundational branches
+            if b["date"] in ["2025-06", "2025-07"]:
+                branch_depth = 25000
+            else:
+                branch_depth = 2500  # Shallow scan for newer branches and LTS
+        else:
+            # Incremental build: Always use the fast 300 commit limit
+            branch_depth = commit_depth
+        # ---------------------------
+
+        print(f"\n  -> Scanning branch: {b['branch']} (Depth Limit: {branch_depth})...")
         
         branch_added = 0
         branch_upgraded = 0
@@ -152,10 +181,11 @@ def main():
                             
             next_token = log_data.get("next")
             
-            # Halt if no next page or cap reached
-            if not next_token or total_commits_scanned >= commit_depth:
-                if total_commits_scanned >= commit_depth:
-                    print(f"\n     [!] Reached {commit_depth} commit depth limit. Halting scan for this branch.")
+            # --- UPDATED HALT LOGIC ---
+            # Halt if no next page or dynamic branch_depth is reached
+            if not next_token or total_commits_scanned >= branch_depth:
+                if total_commits_scanned >= branch_depth:
+                    print(f"\n     [!] Reached {branch_depth} commit depth limit. Halting scan for this branch.")
                 break
                 
             page_count += 1

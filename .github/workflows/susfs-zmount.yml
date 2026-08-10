@@ -371,8 +371,8 @@ jobs:
           if [ "$REPACK_ENABLED" != "true" ]; then
             echo ">>> No OTA provided. Falling back to AnyKernel3 Zip generation..."
             
-            # Use the sanitized name and append -AK3
-            echo "ARTIFACT_NAME=${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
+            # Prepend root manager to the standalone AK3 artifact name
+            echo "ARTIFACT_NAME=${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
             
             git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
             rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
@@ -389,12 +389,12 @@ jobs:
             rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
             cp -f out/Image AnyKernel3-Builder/
             
-            # Zip the AK3 payload explicitly into out/final/
+            # Zip the AK3 payload explicitly into out/final/ with root manager prepended
             cd AnyKernel3-Builder
-            zip -r9 "../out/final/${{ inputs.target_version }}-AK3.zip" *
+            zip -r9 "../out/final/${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3.zip" *
             cd ..
           fi
-          
+                 
           echo ">>> Final Artifact Directory:"
           ls -lah out/final/
 
