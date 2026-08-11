@@ -2,7 +2,10 @@
 set -euo pipefail
 
 # Configuration: Toggle custom Kconfig integration via ENV (Defaults to false)
-WITH_WG=${WITH_WG:-false}
+WITH_CUSTOM=${WITH_CUSTOM:-false}
+
+# Define the source fragment relative to the script execution point
+FRAGMENT_SRC="$(pwd)/tools/custom.fragment"
 
 echo "=== Configuring Kconfigs & Fragments ==="
 
@@ -13,30 +16,22 @@ for f in common/android/abi_gki_protected_exports*; do
   [ -f "$f" ] && > "$f"
 done
 
-if [ "$WITH_WG" = "true" ]; then
-    echo ">>> Integrating Kconfig Configurations..."
+if [ "$WITH_CUSTOM" = "true" ]; then
+    if [ ! -f "$FRAGMENT_SRC" ]; then
+        echo "[-] Error: Fragment file not found at $FRAGMENT_SRC"
+        exit 1
+    fi
+
+    echo ">>> Integrating Kconfig Configurations from $FRAGMENT_SRC..."
     cd common
     
     # Check if we are in a modern Bazel ecosystem
     if [ -f "BUILD.bazel" ]; then
         echo ">>> Modern Bazel detected: Injecting via post_defconfig_fragments..."
         
-        # Create the configuration fragment
-        cat > custom_fragment << 'EOF'
-# --- CORE WIREGUARD ---
-CONFIG_WIREGUARD=y
-CONFIG_NET_UDP_TUNNEL=y
-
-# --- ANDROID NETD ROUTING HOOKS ---
-CONFIG_NETFILTER_XT_MATCH_HASHLIMIT=y
-CONFIG_NETFILTER_XT_MATCH_LENGTH=y
-CONFIG_NETFILTER_XT_MATCH_MARK=y
-CONFIG_NETFILTER_XT_MATCH_POLICY=y
-
-# --- ADDITIONAL CONFIGS ---
-# <LIST EXTRA KERNEL CONFIGS HERE>
-EOF
-
+        # Copy the static fragment into the Bazel package boundary
+        cp "$FRAGMENT_SRC" custom_fragment
+        
         # Inject fragment targeting into the Bazel build rules
         echo 'exports_files(["custom_fragment"])' >> BUILD.bazel
         sed -i '/name = "kernel_aarch64",/a \    post_defconfig_fragments = ["custom_fragment"],' BUILD.bazel
@@ -45,25 +40,8 @@ EOF
         echo "custom_fragment" >> .git/info/exclude
 
     else
-        echo ">>> Legacy Make detected (5.10 or older): Generating fragment..."
-        
-        cat > arch/arm64/configs/custom_legacy.fragment << 'EOF'
-# ==============================================================================
-# CUSTOM ADVANCED CONFIGS & WIREGUARD INTEGRATION
-# ==============================================================================
-# --- CORE WIREGUARD ---
-CONFIG_WIREGUARD=y
-CONFIG_NET_UDP_TUNNEL=y
-
-# --- ANDROID NETD ROUTING HOOKS ---
-CONFIG_NETFILTER_XT_MATCH_HASHLIMIT=y
-CONFIG_NETFILTER_XT_MATCH_LENGTH=y
-CONFIG_NETFILTER_XT_MATCH_MARK=y
-CONFIG_NETFILTER_XT_MATCH_POLICY=y
-
-# --- ADDITIONAL CONFIGS ---
-# <LIST EXTRA KERNEL CONFIGS HERE>
-EOF
+        echo ">>> Legacy Make detected (5.10 or older): Copying fragment..."
+        cp "$FRAGMENT_SRC" arch/arm64/configs/custom_legacy.fragment
     fi
     
     cd ..

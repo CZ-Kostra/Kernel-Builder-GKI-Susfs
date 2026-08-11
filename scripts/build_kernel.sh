@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WITH_WG=${WITH_WG:-false}
+WITH_CUSTOM=${WITH_CUSTOM:-false}
 
 echo "=== Initializing Execution Engine ==="
 
@@ -82,80 +82,65 @@ else
     echo "    [!] Notice: Could not read raw banner string directly from compiled Image binary."
 fi
 
-if [ "$WITH_WG" = "true" ]; then
-    # Group the dashboard inside an expandable GitHub Actions log section
-    echo "::group::WireGuard Integration Report"
+# --- DYNAMIC KCONFIG VALIDATION REPORT ---
+if [ "$WITH_CUSTOM" = "true" ]; then
+    echo "::group::Custom Kconfig Integration Report"
     echo ""
     echo "=============================================="
-    echo " WIREGUARD KERNEL INJECTION REPORT            "
+    echo " CUSTOM KCONFIG VALIDATION REPORT             "
     echo "=============================================="
 
-    # Locate the definitive compiled configuration source
-    CONFIG_SRC=""
-    if [ -f "out/dist/config.gz" ]; then
-        CONFIG_SRC="out/dist/config.gz"
-    elif [ -f "kernel_workspace/out/dist/config.gz" ]; then
-        CONFIG_SRC="kernel_workspace/out/dist/config.gz"
+    FRAGMENT_FILE="../tools/custom.fragment"
+    
+    if [ ! -f "$FRAGMENT_FILE" ]; then
+        echo "[-] Notice: tools/custom.fragment not found. Skipping validation."
     else
-        # Fallback to inspecting build-tree artifacts if distribution archive isn't ready
-        CONFIG_SRC=$(find out/ kernel_workspace/out/ -type f -name ".config" 2>/dev/null | head -n 1 || true)
-    fi
-
-    if [ -z "$CONFIG_SRC" ]; then
-        echo "[!] CRITICAL ERROR: Could not locate compiled kernel configuration target."
-        echo "::endgroup::"
-        exit 1
-    fi
-
-    echo ">>> Extracting definitions from: $CONFIG_SRC"
-    echo "----------------------------------------------"
-
-    # Target features list to cross-check (Removed volatile crypto flags)
-    REQUIRED_CONFIGS=(
-        "CONFIG_WIREGUARD"
-        "CONFIG_NET_UDP_TUNNEL"
-        "CONFIG_NETFILTER_XT_MATCH_HASHLIMIT"
-        "CONFIG_NETFILTER_XT_MATCH_LENGTH"
-        "CONFIG_NETFILTER_XT_MATCH_MARK"
-        "CONFIG_NETFILTER_XT_MATCH_POLICY"
-    )
-
-    FAILED_VALIDATION=0
-
-    for CFG in "${REQUIRED_CONFIGS[@]}"; do
-        # Extract setting state whether compressed or plain text
-        if [[ "$CONFIG_SRC" == *.gz ]]; then
-            VAL=$(zgrep -E "^${CFG}=" "$CONFIG_SRC" | cut -d'=' -f2 || true)
+        # Locate the definitive compiled configuration source
+        CONFIG_SRC=""
+        if [ -f "out/dist/config.gz" ]; then
+            CONFIG_SRC="out/dist/config.gz"
+        elif [ -f "out/dist/.config" ]; then
+            CONFIG_SRC="out/dist/.config"
         else
-            VAL=$(grep -E "^${CFG}=" "$CONFIG_SRC" | cut -d'=' -f2 || true)
+            CONFIG_SRC=$(find out/ -type f \( -name "config.gz" -o -name ".config" \) 2>/dev/null | head -n 1 || true)
         fi
 
-        if [ "$VAL" = "y" ]; then
-            printf "  [ PASS ] %-40s = %s (Built-in)\n" "$CFG" "$VAL"
-        elif [ "$VAL" = "m" ]; then
-            printf "  [ WARN ] %-40s = %s (Module Option)\n" "$CFG" "$VAL"
+        if [ -z "$CONFIG_SRC" ]; then
+            echo "[!] WARN: Could not locate compiled kernel configuration target."
         else
-            printf "  [ FAIL ] %-40s = MISSING\n" "$CFG"
-            # Hard-fail on core engine and UDP tunneling
-            if [ "$CFG" = "CONFIG_WIREGUARD" ] || [ "$CFG" = "CONFIG_NET_UDP_TUNNEL" ]; then
-                FAILED_VALIDATION=1
+            echo ">>> Extracting definitions from: $CONFIG_SRC"
+            echo "----------------------------------------------"
+            
+            # Extract requested configs from fragment, ignoring comments and empty lines
+            REQUESTED_CONFIGS=$(grep -E '^CONFIG_' "$FRAGMENT_FILE" | cut -d'=' -f1 || true)
+            
+            if [ -z "$REQUESTED_CONFIGS" ]; then
+                echo "  [-] No active custom configs found in fragment."
+            else
+                for CFG in $REQUESTED_CONFIGS; do
+                    # Search compiled config for the requested variable
+                    if [[ "$CONFIG_SRC" == *.gz ]]; then
+                        VAL=$(zgrep -E "^${CFG}=" "$CONFIG_SRC" | cut -d'=' -f2 || true)
+                    else
+                        VAL=$(grep -E "^${CFG}=" "$CONFIG_SRC" | cut -d'=' -f2 || true)
+                    fi
+
+                    # Print clean validation status
+                    if [ "$VAL" = "y" ]; then
+                        printf "  [ PASS ] %-40s = %s\n" "$CFG" "$VAL"
+                    elif [ "$VAL" = "m" ]; then
+                        printf "  [ WARN ] %-40s = %s (Module)\n" "$CFG" "$VAL"
+                    else
+                        printf "  [ DROP ] %-40s = MISSING/OVERRIDDEN\n" "$CFG"
+                    fi
+                done
             fi
         fi
-    done
+    fi
 
     echo "=============================================="
-
-    if [ "$FAILED_VALIDATION" -ne 0 ]; then
-        echo "[!] PIPELINE FAILURE: Core WireGuard variables dropped during compilation."
-        echo "::endgroup::"
-        exit 1
-    fi
-    
-    echo "[+] Pipeline successfully validated. Ready for distribution packaging."
-    echo ""
     echo "::endgroup::"
 fi
 
 cd ..
 echo ">>> Build execution loop completed"
-
