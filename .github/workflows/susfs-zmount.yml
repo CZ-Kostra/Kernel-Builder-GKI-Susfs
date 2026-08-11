@@ -300,6 +300,21 @@ jobs:
           fi
         shell: bash
     
+      - name: Inject User Source Files
+        run: |
+          SRC_DIR="$(pwd)/tools/user_source"
+          
+          # Check if the directory exists and contains files
+          if [ -d "$SRC_DIR" ] && [ "$(ls -A "$SRC_DIR")" ]; then
+            echo ">>> User source files detected. Injecting into common tree..."
+            shopt -s dotglob nullglob
+            cp -r "$SRC_DIR"/* kernel_workspace/common/
+            echo ">>> Source injection complete."
+          else
+            echo ">>> No raw source files found in tools/user_source/."
+          fi
+        shell: bash
+
       - name: Apply User Patches
         run: |
           PATCH_DIR="$(pwd)/tools/user_patches"
