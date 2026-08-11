@@ -299,22 +299,29 @@ jobs:
             echo ">>> ZeroMount script missing or empty. Proceeding without it."
           fi
         shell: bash
-          
-      - name: Run Custom Patches
-        env:
-          TARGET_VERSION: ${{ inputs.target_version }}
-          SU_VARIANT: ${{ inputs.root_manager }}
+    
+      - name: Apply User Patches
         run: |
-          # Check if file exists and has executable content.
-          if [ -s "scripts/custom_patches.sh" ] && [ $(grep -v '^#' scripts/custom_patches.sh | grep -c "[^[:space:]]") -gt 0 ]; then
-            echo ">>> Custom patch script detected. Applying modifications..."
-            chmod +x scripts/custom_patches.sh
-            ./scripts/custom_patches.sh
+          PATCH_DIR="$(pwd)/tools/user_patches"
+          
+          # Check if the directory exists and contains any .patch files
+          if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
+            echo ">>> User patches detected in tools/user_patches/. Applying to common tree..."
+            cd kernel_workspace/common
+            
+            # Iterate through and apply every patch found
+            for patch_file in "$PATCH_DIR"/*.patch; do
+              echo "  -> Applying $(basename "$patch_file")..."
+              patch -p1 --no-backup-if-mismatch < "$patch_file"
+            done
+            
+            cd ../..
+            echo ">>> User patching complete."
           else
-            echo ">>> No custom patches to apply. Proceeding with stock/KSU build."
+            echo ">>> No user patches found in tools/user_patches/. Proceeding with stock source."
           fi
         shell: bash
-
+        
       - name: Build common kernel Image
         env:
           WITH_CUSTOM: ${{ inputs.custom_kconfigs }}
