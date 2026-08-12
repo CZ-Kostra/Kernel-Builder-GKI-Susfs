@@ -5,34 +5,7 @@ set -euo pipefail
 
 VARIANT="${1}"
 GH_TOKEN="${2}"
-UPSTREAM_HASH="${3:-}" # Optional: Not needed for ZeroMount
-
-# ==========================================
-# ZEROMOUNT FETCH LOGIC
-# ==========================================
-if [[ "${VARIANT}" == "ZeroMount" ]]; then
-  echo ">>> Fetching latest ZeroMount release from Enginex0/zeromount..."
-  
-  LATEST_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/Enginex0/zeromount/releases/latest")
-  DOWNLOAD_URL=$(echo "$LATEST_JSON" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url' | head -n 1)
-  
-  if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-    echo "[-] Warning: Failed to find a ZeroMount module zip. Continuing run."
-    exit 0
-  fi
-  
-  echo ">>> Downloading $DOWNLOAD_URL..."
-  mkdir -p zeromount_module
-  FILE_NAME=$(basename "$DOWNLOAD_URL")
-  curl -s -L -H "Authorization: token $GH_TOKEN" -o "zeromount_module/$FILE_NAME" "$DOWNLOAD_URL"
-  
-  echo ">>> Extracting ZeroMount module to prevent double-zipping..."
-  unzip -q -o "zeromount_module/$FILE_NAME" -d zeromount_module/
-  rm "zeromount_module/$FILE_NAME"
-  
-  echo ">>> ZeroMount successfully staged for final upload!"
-  exit 0
-fi
+UPSTREAM_HASH="${3:-}"
 
 # ==========================================
 # ROOT MANAGER FETCH LOGIC

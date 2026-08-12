@@ -47,12 +47,6 @@ on:
         type: boolean
         default: false
 
-      enable_zero_mount:
-        description: "Integrate ZeroMount VFS? (caution!- experimental)"
-        required: false
-        type: boolean
-        default: false
-
       custom_kconfigs:
         description: >
           Inject Custom Kconfigs?
@@ -290,22 +284,6 @@ jobs:
           chmod +x scripts/configure_kconfigs.sh
           ./scripts/configure_kconfigs.sh
 
-      - name: Integrate ZeroMount
-        if: inputs.enable_zero_mount == true
-        env:
-          TARGET_VERSION: ${{ inputs.target_version }}
-          SU_VARIANT: ${{ inputs.root_manager }}
-        run: |
-          # Check if file exists and has executable content.
-          if [ -s "scripts/inject_zero_mount.sh" ] && [ $(grep -v '^#' scripts/inject_zero_mount.sh | grep -c "[^[:space:]]") -gt 0 ]; then
-            echo ">>> ZeroMount script detected. Applying stealth modifications..."
-            chmod +x scripts/inject_zero_mount.sh
-            ./scripts/inject_zero_mount.sh
-          else
-            echo ">>> ZeroMount script missing or empty. Proceeding without it."
-          fi
-        shell: bash
-
       - name: Inject User Source Files
         run: |
           SRC_DIR="$(pwd)/tools/user_source"
@@ -497,22 +475,6 @@ jobs:
         run: |
           chmod +x scripts/fetch_manager.sh
           ./scripts/fetch_manager.sh "$VARIANT" "$GH_TOKEN" "$UPSTREAM_HASH"
-
-      - name: Fetch ZeroMount Module
-        if: inputs.enable_zero_mount == true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          chmod +x scripts/fetch_manager.sh
-          ./scripts/fetch_manager.sh "ZeroMount" "$GH_TOKEN"
-
-      - name: Upload ZeroMount Module
-        if: inputs.enable_zero_mount == true
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZeroMount-Module
-          path: zeromount_module/
-          if-no-files-found: error
 
       - name: Upload final artifact (Kernel)
         uses: actions/upload-artifact@v4
