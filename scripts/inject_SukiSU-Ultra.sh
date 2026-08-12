@@ -32,6 +32,7 @@ echo "  -> Target Count: $CALCULATED_COUNT"
 # ========================================================================
 # DYNAMIC SuSFS TRANSPLANT (From cheat sheet)
 # ========================================================================
+if [ "${INTEGRATE_SUSFS}" == "true" ]; then
 echo ">>> 2. Fetching 'builtin' branch for SuSFS code transplant..."
 git fetch origin builtin:builtin
 
@@ -63,9 +64,7 @@ git diff --diff-filter=AM main..builtin -- kernel/ uapi/ \
 echo ">>> 5. Applying surgical SuSFS port patch to main..."
 git apply susfs_port_clean.patch
 rm susfs_port_clean.patch
-
-# Restore executable permissions for scripts
-find kernel/ uapi/ -type f -name "*.sh" -exec chmod +x {} +
+fi
 
 # Step back out to kernel_workspace
 cd .. 

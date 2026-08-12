@@ -32,9 +32,10 @@ echo "  -> Target Count: $CALCULATED_COUNT"
 # ========================================================================
 # KLEAF BYPASS & KCONFIG INJECTION (Robust sed strategy)
 # ========================================================================
+if [ "${INTEGRATE_SUSFS}" == "true" ]; then
 echo ">>> 2. Applying dynamic Kleaf bypass & Kconfig overrides..."
-
 # 1. Modify Kconfig to force KSU_SUSFS as default and hide the other options
+
 sed -i 's/default KSU_TRACEPOINT_HOOK/default KSU_SUSFS/g' kernel/Kconfig
 sed -i 's/bool "Tracepoint Syscall Redirect"/bool "Tracepoint Syscall Redirect"\n\t\tdepends on n/g' kernel/Kconfig
 sed -i 's/depends on KSU != m/depends on n/g' kernel/Kconfig
@@ -47,6 +48,7 @@ sed -i 's/ifeq ($(shell test -e $(srctree)\/fs\/susfs.c.*/ifeq (0,0)/g' kernel/K
 sed -i 's/cat $(srctree)\/include\/linux\/susfs.h |/cat $(srctree)\/include\/linux\/susfs.h 2>\/dev\/null |/g' kernel/Kbuild
 
 echo ">>> 3. Kleaf bypass applied successfully."
+fi
 
 # Step back out to kernel_workspace
 cd .. 

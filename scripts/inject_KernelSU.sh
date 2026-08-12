@@ -33,6 +33,7 @@ echo "  -> Target Count: $CALCULATED_COUNT"
 # ========================================================================
 # DYNAMIC SuSFS INJECTION
 # ========================================================================
+if [ "${INTEGRATE_SUSFS}" == "true" ]; then
 echo ">>> 2. Fetching Simonpunk's 6.6-dev 10_enable_susfs_for_ksu patch..."
 
 # Fetching from the gki-android15-6.6-dev branch for universal compatibility
@@ -72,6 +73,7 @@ EOF
 
 # Clean up the patch file to keep the directory pristine
 rm 10_enable_susfs_for_ksu.patch
+fi
 
 # Step back out to kernel_workspace so the main router can finish
 cd ..

@@ -25,6 +25,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
     CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
     echo "  -> Target Tag: $CALCULATED_TAG"
 
+    if [ "${INTEGRATE_SUSFS}" == "true" ]; then
     echo ">>> 2. Fetching Pershoot's live laboratory..."
     git remote add pershoot https://github.com/pershoot/KernelSU-Next.git
     git fetch pershoot dev-susfs
@@ -41,6 +42,7 @@ if [[ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]]; then
     fi
     
     git commit -m "Merge susfs features from pershoot"
+    fi
 
     # Lock in variables for the Kbuild Gatekeeper
     UPSTREAM_BRANCH="dev"
@@ -80,24 +82,6 @@ else
     # Calculate exact versions for the Sandbox Gatekeeper
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v3.2.0")
-fi
-
-# ========================================================================
-# KERNEL VERSION ADAPTATION (6.6+ FIXES)
-# ========================================================================
-echo ">>> Detecting Kernel Version for Dynamic Adaptation..."
-K_MAJ=$(grep -m 1 "^VERSION =" ../common/Makefile | awk '{print $3}')
-K_MIN=$(grep -m 1 "^PATCHLEVEL =" ../common/Makefile | awk '{print $3}')
-
-echo ">>> Target Kernel: $K_MAJ.$K_MIN"
-
-if [ "$K_MAJ" -eq 6 ] && [ "$K_MIN" -ge 6 ]; then
-    echo ">>> Manually exposing 6.6 SELinux functions for SuSFS linking..."
-    
-    # Strip 'static' scope from functions required by selinuxfs.c
-    sed -i 's/static int security_context_to_sid_with_policy/int security_context_to_sid_with_policy/g' kernel/feature/selinux_hide.c
-    sed -i 's/static int security_sid_to_context_with_policy/int security_sid_to_context_with_policy/g' kernel/feature/selinux_hide.c
-    sed -i 's/static void security_compute_av_user_with_policy/void security_compute_av_user_with_policy/g' kernel/feature/selinux_hide.c
 fi
 
 # Step back out to kernel_workspace

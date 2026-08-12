@@ -45,6 +45,28 @@ else
 fi
 
 # ========================================================================
+# KERNEL 6.6/6.12 UPSTREAM COMPATIBILITY FIXES
+# ========================================================================
+echo ">>> Checking for upstream 6.6+ SELinux static declaration conflicts..."
+SELINUX_HIDE="${MANAGER_DIR}/kernel/feature/selinux_hide.c"
+
+# Apply fixes ONLY if the file exists AND the variant is NOT ReSukiSU
+if [ -f "$SELINUX_HIDE" ] && [[ "$VARIANT" != "ReSukiSU" ]]; then
+    # 1. security_compute_av_user_with_policy (void/int, catching optional __nocfi)
+    sed -i -E 's/static\s+(void|int)\s+(__nocfi\s+)?security_compute_av_user_with_policy/\1 \2security_compute_av_user_with_policy/g' "$SELINUX_HIDE"
+    
+    # 2. security_context_to_sid_with_policy (int, catching optional __nocfi)
+    sed -i -E 's/static\s+(int)\s+(__nocfi\s+)?security_context_to_sid_with_policy/\1 \2security_context_to_sid_with_policy/g' "$SELINUX_HIDE"
+    
+    # 3. security_sid_to_context_with_policy (int, catching optional __nocfi)
+    sed -i -E 's/static\s+(int)\s+(__nocfi\s+)?security_sid_to_context_with_policy/\1 \2security_sid_to_context_with_policy/g' "$SELINUX_HIDE"
+
+    echo "  -> Applied targeted SELinux scope fixes to ${VARIANT}."
+else
+    echo "  -> Bypassing SELinux scope fixes (Native compatibility detected for ${VARIANT})."
+fi
+
+# ========================================================================
 # KLEAF SANDBOX IMMUTABLE GATEKEEPER
 # ========================================================================
 # (These variables were populated by the sourced variant script)
