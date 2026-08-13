@@ -5,8 +5,7 @@ on:
     inputs:
       build_channel:
         description: 'Build Channel (switch to stable in case of errors/instability)'
-        required: true
-        default: 'dynamic'
+        required: false
         type: choice
         options:
           - dynamic
@@ -16,7 +15,6 @@ on:
       build_name:
         description: "Build Name"
         required: true
-        default: ""
         type: string
 
       target_version:
@@ -27,13 +25,13 @@ on:
       root_manager:
         description: "Root Environment"
         required: false
-        default: ""
         type: choice
         options:
           - KernelSU-Next
           - SukiSU-Ultra
           - ReSukiSU
           - KernelSU
+          - Stock
 
       enable_ksu_susfs:
         description: "Integrate Root Manager and SUSFS?"
@@ -42,14 +40,14 @@ on:
         default: true
         
       enable_ksu:
-        description: "Integrate Root Manager only? (uncheck Integrate Root Manager and SUSFS)"
+        description: "Integrate Root Manager only? (uncheck 'Integrate Root Manager and SUSFS')"
         required: false
         type: boolean
         default: false
 
       custom_kconfigs:
         description: >
-          Inject custom Kconfigs patches and source files?
+          Inject custom Kconfigs, patches and source files?
         required: false
         type: boolean
         default: false
@@ -57,7 +55,6 @@ on:
       ota_url:
         description: "Full OTA ZIP URL (blank produces AK3 zip)"
         required: false
-        default: ""
         type: string
 
 env:
@@ -182,7 +179,7 @@ jobs:
 
 
       - name: Configure Build Channels
-        if: inputs.enable_ksu_susfs == true || inputs.enable_ksu == true
+        if: inputs.root_manager != 'Stock' && (inputs.enable_ksu_susfs == true || inputs.enable_ksu == true)
         run: |
           echo "=== Configuring Build Channel: ${{ inputs.build_channel }} ==="
 
@@ -234,7 +231,7 @@ jobs:
           echo ">>> Captured Date: $(git log -1 --format=%ct)"
 
       - name: Integrate Root Manager (${{ inputs.root_manager }})
-        if: inputs.enable_ksu_susfs == true || inputs.enable_ksu == true
+        if: inputs.root_manager != 'Stock' && (inputs.enable_ksu_susfs == true || inputs.enable_ksu == true)
         env:
           KSU_VARIANT_REPO_URL: ${{ env.KSU_VARIANT_REPO_URL }}
           KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
@@ -245,7 +242,7 @@ jobs:
           bash ./scripts/inject_ksu_variant.sh "${{ inputs.root_manager }}"
 
       - name: Calculate Dynamic SuSFS Branch
-        if: inputs.enable_ksu_susfs == true
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
         run: |
           MANIFEST="${{ env.MANIFEST_BRANCH }}"
 
@@ -264,7 +261,7 @@ jobs:
           fi
 
       - name: Integrate SUSFS common-side
-        if: inputs.enable_ksu_susfs == true
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
         env:
           SUSFS_NEXT_URL: ${{ env.SUSFS_REPO_URL }}
           SUSFS_NEXT_REF: ${{ env.SUSFS_BRANCH }}
