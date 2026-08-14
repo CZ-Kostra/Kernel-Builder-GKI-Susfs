@@ -31,4 +31,7 @@
 #CONFIG_DUMMY=y
 
 # --- NOMOUNT VFS ---
-CONFIG_NOMOUNT=y
+# NoMount is a kernel-based file injection and path redirection framework.
+# For integration instructions, refer to: https://github.com/maxsteeel/nomount/tree/master/kernel
+#CONFIG_NOMOUNT=y
+
