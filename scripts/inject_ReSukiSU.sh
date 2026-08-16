@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/inject_ReSukiSU.sh
-# Dynamic SuSFS integration module for ReSukiSU (and SukiSU-Ultra)
+# Dynamic SuSFS integration module for ReSukiSU
 
 echo ">>> Executing Integration Module for ${VARIANT}..."
 
-echo ">>> 1. Cloning pristine official ${VARIANT} upstream..."
-git clone "https://github.com/${VARIANT}/${VARIANT}.git" "${MANAGER_DIR}"
+echo ">>> 1. Cloning ${VARIANT} from configured channel..."
+git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
 
 # Prevent setup.sh from performing a redundant clone
 ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
@@ -32,22 +32,23 @@ echo "  -> Target Count: $CALCULATED_COUNT"
 # ========================================================================
 # KLEAF BYPASS & KCONFIG INJECTION (Robust sed strategy)
 # ========================================================================
-if [ "${INTEGRATE_SUSFS}" == "true" ]; then
-echo ">>> 2. Applying dynamic Kleaf bypass & Kconfig overrides..."
-# 1. Modify Kconfig to force KSU_SUSFS as default and hide the other options
+if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
+    echo ">>> 2. Applying dynamic Kleaf bypass & Kconfig overrides..."
+    # 1. Modify Kconfig to force KSU_SUSFS as default and hide the other options
+    sed -i 's/default KSU_TRACEPOINT_HOOK/default KSU_SUSFS/g' kernel/Kconfig
+    sed -i 's/bool "Tracepoint Syscall Redirect"/bool "Tracepoint Syscall Redirect"\n\t\tdepends on n/g' kernel/Kconfig
+    sed -i 's/depends on KSU != m/depends on n/g' kernel/Kconfig
 
-sed -i 's/default KSU_TRACEPOINT_HOOK/default KSU_SUSFS/g' kernel/Kconfig
-sed -i 's/bool "Tracepoint Syscall Redirect"/bool "Tracepoint Syscall Redirect"\n\t\tdepends on n/g' kernel/Kconfig
-sed -i 's/depends on KSU != m/depends on n/g' kernel/Kconfig
+    # 2. Modify Kbuild to bypass the strict sandbox test -e check
+    # We force the 'ifeq' to (0,0) so it always evaluates as true and extracts the SUSFS_VERSION
+    sed -i 's/ifeq ($(shell test -e $(srctree)\/fs\/susfs.c.*/ifeq (0,0)/g' kernel/Kbuild
 
-# 2. Modify Kbuild to bypass the strict sandbox test -e check
-# We force the 'ifeq' to (0,0) so it always evaluates as true and extracts the SUSFS_VERSION
-sed -i 's/ifeq ($(shell test -e $(srctree)\/fs\/susfs.c.*/ifeq (0,0)/g' kernel/Kbuild
+    # Silence the 'cat' error if the susfs.h file is temporarily hidden by the Kleaf sandbox
+    sed -i 's/cat $(srctree)\/include\/linux\/susfs.h |/cat $(srctree)\/include\/linux\/susfs.h 2>\/dev\/null |/g' kernel/Kbuild
 
-# Silence the 'cat' error if the susfs.h file is temporarily hidden by the Kleaf sandbox
-sed -i 's/cat $(srctree)\/include\/linux\/susfs.h |/cat $(srctree)\/include\/linux\/susfs.h 2>\/dev\/null |/g' kernel/Kbuild
-
-echo ">>> 3. Kleaf bypass applied successfully."
+    echo ">>> 3. Kleaf bypass applied successfully."
+else
+    echo ">>> Safe fallback channel detected. Bypassing dynamic injections (already baked in)..."
 fi
 
 # Step back out to kernel_workspace

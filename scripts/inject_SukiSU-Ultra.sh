@@ -4,8 +4,8 @@
 
 echo ">>> Executing Integration Module for SukiSU-Ultra..."
 
-echo ">>> 1. Cloning pristine official SukiSU-Ultra upstream..."
-git clone "https://github.com/SukiSU-Ultra/SukiSU-Ultra.git" "${MANAGER_DIR}"
+echo ">>> 1. Cloning ${VARIANT} from configured channel..."
+git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
 
 # Prevent setup.sh from performing a redundant clone
 ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
@@ -32,7 +32,7 @@ echo "  -> Target Count: $CALCULATED_COUNT"
 # ========================================================================
 # DYNAMIC SuSFS TRANSPLANT (From cheat sheet)
 # ========================================================================
-if [ "${INTEGRATE_SUSFS}" == "true" ]; then
+if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
 echo ">>> 2. Fetching 'builtin' branch for SuSFS code transplant..."
 git fetch origin builtin:builtin
 
@@ -64,6 +64,8 @@ git diff --diff-filter=AM main..builtin -- kernel/ uapi/ \
 echo ">>> 5. Applying surgical SuSFS port patch to main..."
 git apply susfs_port_clean.patch
 rm susfs_port_clean.patch
+else
+    echo ">>> Safe fallback channel detected. Bypassing dynamic SuSFS port patch..."
 fi
 
 # Step back out to kernel_workspace
