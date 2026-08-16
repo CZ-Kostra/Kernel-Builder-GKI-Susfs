@@ -31,14 +31,31 @@ else
     
     ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
     cd common
-    bash "${MANAGER_DIR}/kernel/setup.sh" main
+    # FIX 1: Pass the dynamic reference instead of hardcoded 'main'
+    bash "${MANAGER_DIR}/kernel/setup.sh" "${KSU_VARIANT_REF}"
     cd ..
     
+    # FIX 2: Lock the upstream tracking variable to the dynamic branch
+    UPSTREAM_BRANCH="${KSU_VARIANT_REF}"
+    
     cd "${MANAGER_DIR}"
-    UPSTREAM_HASH=$(git log -n 1 --format="%H" -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
-    CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-    CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}")
-    UPSTREAM_BRANCH="main"
+    
+    # FIX 3: Fetch official upstream and calculate the pristine Merge-Base
+    OFFICIAL_REPO_URL="https://github.com/ReSukiSU/ReSukiSU.git"
+    echo ">>> Locating official upstream sync point for ReSukiSU/ReSukiSU..."
+    
+    # We fetch 'main' from the official repo because that is their core tracking branch
+    git fetch --quiet "${OFFICIAL_REPO_URL}" main
+    RAW_BASE=$(git merge-base HEAD FETCH_HEAD)
+    
+    # FIX 4: Calculate Hash, Count, and Tag starting strictly from the pristine base commit
+    set +o pipefail
+    UPSTREAM_HASH=$(git log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
+    set -o pipefail
+    
+    CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
+    CALCULATED_TAG=$(git describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v0.0.0")
+    
     cd ..
 fi
 
