@@ -1,5 +1,6 @@
 name: Universal GKI Kernel Builder CI
-run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+### run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ inputs.build_channel }}]"
 on:
   workflow_dispatch:
     inputs:
@@ -16,11 +17,13 @@ on:
         description: "Build Name"
         required: true
         type: string
+        default: "A12-5.10-lts()_KSUN-" 
 
       target_version:
         description: "Kernel Version"
         required: true
         type: string
+        default: "5.10.264"
 
       root_manager:
         description: "Root Environment"
@@ -383,7 +386,8 @@ jobs:
             echo ">>> No OTA provided. Falling back to AnyKernel3 Zip generation..."
 
             # Prepend root manager to the standalone AK3 artifact name
-            echo "ARTIFACT_NAME=${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
+            ### echo "ARTIFACT_NAME=${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}-AK3" >> $GITHUB_ENV
 
             git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
             rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
