@@ -5,7 +5,7 @@
 echo ">>> Executing Integration Module for KernelSU-Next..."
 
 if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
-    echo ">>> [CANARY] Executing Automated Dynamic Transplant for KernelSU-Next..."
+    echo ">>> [DYNAMIC] Executing Automated Dynamic Transplant for KernelSU-Next..."
     
     echo ">>> 1. Cloning pristine official KernelSU-Next..."
     git clone https://github.com/KernelSU-Next/KernelSU-Next.git "${MANAGER_DIR}"
@@ -60,23 +60,30 @@ else
 
     echo ">>> Executing native setup.sh..."
     cd common
+    # FIX 1: Pass the dynamic reference
     bash "${MANAGER_DIR}/kernel/setup.sh" "${KSU_VARIANT_REF}"
     cd ..
 
     cd "${MANAGER_DIR}"
+    
+    # FIX 2: Lock the upstream tracking variable to the dynamic branch for the Gatekeeper
+    UPSTREAM_BRANCH="${KSU_VARIANT_REF}"
+    
     UPSTREAM_REPO="KernelSU-Next/KernelSU-Next"
-    UPSTREAM_BRANCH="dev"
+    # KernelSU-Next's official repository uses 'dev' instead of 'main'
+    OFFICIAL_TRACKING_BRANCH="dev" 
 
     # If building custom manager on test channel, use HEAD so kernel and APK versions match perfectly.
     if [[ "${BUILD_CHANNEL:-}" == "test" ]]; then
         echo ">>> [TEST CHANNEL] Bypassing upstream sync. Using custom HEAD for version match..."
         UPSTREAM_HASH=$(git rev-parse HEAD)
     else
+        # FIX 3: Fetch official upstream 'dev' branch and calculate pristine Merge-Base
         echo ">>> Locating official upstream sync point for ${UPSTREAM_REPO}..."
-        git fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" "${UPSTREAM_BRANCH}"
+        git fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" "${OFFICIAL_TRACKING_BRANCH}"
         RAW_BASE=$(git merge-base HEAD FETCH_HEAD)
 
-        # Walk backward down the official mainline branch
+        # FIX 4: Walk backward down the pristine mainline branch
         set +o pipefail
         UPSTREAM_HASH=$(git log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
         set -o pipefail
