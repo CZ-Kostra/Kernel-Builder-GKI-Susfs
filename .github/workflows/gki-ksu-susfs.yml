@@ -1,8 +1,6 @@
 name: Universal GKI Kernel Builder CI
 ### run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
 run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ inputs.build_channel }}]"
-
-on:
 on:
   workflow_dispatch:
     inputs:
