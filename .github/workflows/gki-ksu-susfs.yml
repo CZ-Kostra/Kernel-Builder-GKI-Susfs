@@ -387,7 +387,9 @@ jobs:
             echo ">>> No OTA provided. Falling back to AnyKernel3 Zip generation..."
 
             # Prepend root manager to the standalone AK3 artifact name
-            echo "ARTIFACT_NAME=${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
+            ### echo "ARTIFACT_NAME=${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}-AK3" >> $GITHUB_ENV
+
 
             git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
             rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
@@ -397,9 +399,7 @@ jobs:
           else
             echo ">>> OTA Repack detected. Outputting standard boot image and AK3 zip."
             # Use the sanitized name for the parent artifact zip
-            ### echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}-AK3" >> $GITHUB_ENV
-
+            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}" >> $GITHUB_ENV
             # Generate the specific AK3 zip for inclusion in the artifact
             git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
             rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
