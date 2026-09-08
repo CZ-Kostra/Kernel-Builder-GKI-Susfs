@@ -15,10 +15,19 @@ git -C common ls-files -m | xargs -r git -C common update-index --assume-unchang
 # Build method 
 if [ "$BASE_VER" != "5.10" ] && [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected for $BASE_VER..."
-    # Enforce standard sandboxing, disable trimming, and inject MAKEFLAGS dynamically
     
+    # 5.15 Kleaf doesn't support --notrim. We must use dynamic flag injection.
+    TRIM_FLAGS=""
+    if [ "$BASE_VER" = "5.15" ]; then
+        echo "  -> 5.15 detected. Omitting --notrim and injecting legacy env vars..."
+        TRIM_FLAGS="--action_env=TRIM_NONLISTED_KMI=0 --action_env=KMI_SYMBOL_LIST_STRICT_MODE=0"
+    else
+        TRIM_FLAGS="--notrim"
+    fi
+    
+    # Enforce standard sandboxing, disable trimming dynamically, and inject MAKEFLAGS
     tools/bazel run --config=stamp \
-      --notrim \
+      $TRIM_FLAGS \
       --action_env=SOURCE_DATE_EPOCH="$OFFICIAL_DATE" \
       --action_env=STABLE_BUILD_VERSION="-g$OFFICIAL_HASH" \
       --action_env=KLEAF_KERNEL_BUILD_VERSION="-g$OFFICIAL_HASH" \
@@ -36,7 +45,7 @@ else
     echo ">>> Disabling strict mode and trimming in 5.10 build.config files..."
     sed -i 's/KMI_SYMBOL_LIST_STRICT_MODE=1/KMI_SYMBOL_LIST_STRICT_MODE=0/g' common/build.config.* 2>/dev/null || true
     sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' common/build.config.* 2>/dev/null || true
-    
+
     # 2. Export standard environment variables for legacy build.sh
     export KERNEL_DIR="common"
     export BUILD_CONFIG="common/build.config.gki.aarch64"
