@@ -41,11 +41,9 @@ else
     mkdir -p out/dist
     
     # Export standard environment variables for legacy build.sh
-   
     export KERNEL_DIR="common"
     export BUILD_CONFIG="common/build.config.gki.aarch64"
     export SOURCE_DATE_EPOCH="$OFFICIAL_DATE"
-    
     export DIST_DIR="out/dist"
     
     # Inject official hash and Make overrides

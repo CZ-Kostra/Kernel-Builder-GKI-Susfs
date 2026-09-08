@@ -24,12 +24,17 @@ cd common
             sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' build.config.* 2>/dev/null || true
             ;;
         5.15)
-            # 5.15 uses early Kleaf but STILL reads build.config.* for trimming!
             echo ">>> Disabling strict ABI mode & trimming in legacy build.config AND BUILD.bazel for $BASE_VER..."
             sed -i 's/KMI_SYMBOL_LIST_STRICT_MODE=1/KMI_SYMBOL_LIST_STRICT_MODE=0/g' build.config.* 2>/dev/null || true
             sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' build.config.* 2>/dev/null || true
+            
+            # Patch Bazel strict mode
             sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel 2>/dev/null || true
+            
+            # 🚀 NEW: Patch Bazel trimming rule so the console and compiler align
+            sed -i -E 's/(["\x27]?trim_nonlisted_kmi["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel 2>/dev/null || true
             ;;
+
         6.1|6.6|6.12)
             echo ">>> Disabling strict ABI mode in BUILD.bazel for $BASE_VER..."
             sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel 2>/dev/null || true

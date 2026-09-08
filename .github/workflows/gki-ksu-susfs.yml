@@ -90,7 +90,7 @@ jobs:
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
-          android: false
+          android: true
           dotnet: true
           haskell: false
           large-packages: false
