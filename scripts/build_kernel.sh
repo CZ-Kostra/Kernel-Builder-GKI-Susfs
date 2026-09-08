@@ -16,11 +16,10 @@ git -C common ls-files -m | xargs -r git -C common update-index --assume-unchang
 if [ "$BASE_VER" != "5.10" ] && [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected for $BASE_VER..."
     
-    # 5.15 Kleaf doesn't support --notrim. We must use dynamic flag injection.
+    # 5.15 Kleaf doesn't support --notrim, but configure_kconfigs.sh already patched build.config.*
     TRIM_FLAGS=""
     if [ "$BASE_VER" = "5.15" ]; then
-        echo "  -> 5.15 detected. Omitting --notrim and injecting legacy env vars..."
-        TRIM_FLAGS="--action_env=TRIM_NONLISTED_KMI=0 --action_env=KMI_SYMBOL_LIST_STRICT_MODE=0"
+        echo "  -> 5.15 detected. Relying on physical build.config patches (omitting --notrim)..."
     else
         TRIM_FLAGS="--notrim"
     fi
@@ -41,32 +40,23 @@ else
     
     mkdir -p out/dist
     
-    # 1. Physically patch the hardcoded build configs so they cannot override our settings
-    echo ">>> Disabling strict mode and trimming in 5.10 build.config files..."
-    sed -i 's/KMI_SYMBOL_LIST_STRICT_MODE=1/KMI_SYMBOL_LIST_STRICT_MODE=0/g' common/build.config.* 2>/dev/null || true
-    sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' common/build.config.* 2>/dev/null || true
-
-    # 2. Export standard environment variables for legacy build.sh
+    # Export standard environment variables for legacy build.sh
+   
     export KERNEL_DIR="common"
     export BUILD_CONFIG="common/build.config.gki.aarch64"
     export SOURCE_DATE_EPOCH="$OFFICIAL_DATE"
     
-    # Inject the fragment
-    export EXTRA_DEFCONFIG_FRAGMENTS="custom_legacy.fragment"
     export DIST_DIR="out/dist"
     
     # Inject official hash and Make overrides
     export EXTRA_LINUX_VERSION="-g${OFFICIAL_HASH}"
     
-    # 3. Run the legacy orchestration script
+    # Run the legacy orchestration script
     if [ -f "build/build.sh" ]; then
         echo "[+] Invoking build/build.sh..."
         bash build/build.sh
-    elif [ -f "build.sh" ]; then
-        echo "[+] Invoking build.sh..."
-        bash build.sh
     else
-        echo "[-] ERROR: Legacy build.sh orchestrator not found!" >&2
+        echo "[-] ERROR: Legacy build/build.sh orchestrator not found!" >&2
         exit 1
     fi
 fi
