@@ -325,22 +325,40 @@ jobs:
         if: ${{ inputs.custom_kconfigs }}
         run: |
           PATCH_DIR="$(pwd)/tools/user_patches"
+          
+          echo ">>> Target Base Version for patches: $BASE_VER"
 
-          # Check if the directory exists and contains any .patch files
-          if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
-            echo ">>> User patches detected in tools/user_patches/. Applying to common tree..."
+          if [ -d "$PATCH_DIR" ]; then
             cd kernel_workspace/common
+            shopt -s nullglob
+            patches=("$PATCH_DIR"/*.patch)
 
-            # Iterate through and apply every patch found
-            for patch_file in "$PATCH_DIR"/*.patch; do
-              echo "  -> Applying $(basename "$patch_file")..."
-              patch -p1 --no-backup-if-mismatch < "$patch_file"
-            done
+            if [ ${#patches[@]} -gt 0 ]; then
+              echo ">>> User patches detected. Filtering by version..."
 
+              for patch_file in "${patches[@]}"; do
+                filename=$(basename "$patch_file")
+                
+                # Condition 1: Exact BASE_VER match (e.g., 6.1-0001-fix.patch)
+                if [[ "$filename" == "${BASE_VER}-"* ]]; then
+                  echo "  -> [MATCH] Applying version-specific patch: $filename..."
+                  patch -p1 --no-backup-if-mismatch < "$patch_file" || { echo "[-] Patch failed: $filename"; exit 1; }
+                  
+                # Condition 2: Matches any other kernel version prefix (e.g., 6.6-0005.patch)
+                elif [[ "$filename" =~ ^[0-9]+\.[0-9]+- ]]; then
+                  continue # Silently skip non-matching versions
+                  
+                # Condition 3: Universal patch (e.g., 0007-security-fix.patch)
+                else
+                  echo "  -> [GENERIC] Applying generic patch: $filename..."
+                  patch -p1 --no-backup-if-mismatch < "$patch_file" || { echo "[-] Patch failed: $filename"; exit 1; }
+                fi
+              done
+              echo ">>> Patching routine complete."
+            else
+              echo ">>> No .patch files found in tools/user_patches/."
+            fi
             cd ../..
-            echo ">>> User patching complete."
-          else
-            echo ">>> No user patches found in tools/user_patches/. Proceeding with stock source."
           fi
         shell: bash
 
@@ -510,14 +528,18 @@ jobs:
         if: inputs.custom_kconfigs == true
         run: |
           echo ">>> Fetching latest NoMount metamodule from maxsteeel/nomount..."
-          mkdir -p nomount_module
+          mkdir -p nomount_extracted
           
           # Query GitHub API for the latest release and extract the zip download URL
           LATEST_URL=$(curl -s https://api.github.com/repos/maxsteeel/nomount/releases/latest | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url' | head -n 1)
           
           if [ -n "$LATEST_URL" ]; then
             echo "  -> Downloading: $LATEST_URL"
-            wget -qO nomount_module/nomount-latest.zip "$LATEST_URL"
+            wget -qO temp_module.zip "$LATEST_URL"
+            
+            echo "  -> Extracting to avoid double-zipping..."
+            unzip -q temp_module.zip -d nomount_extracted/
+            rm temp_module.zip
           else
             echo "[-] Failed to find NoMount release zip."
           fi
@@ -527,9 +549,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NoMount-KSU-Module
-          path: nomount_module/*.zip
+          path: nomount_extracted/
           if-no-files-found: warn
-          
 
       - name: Upload Manager APK
         if: inputs.root_manager != 'Stock' && (inputs.enable_ksu_susfs == true || inputs.enable_ksu == true)
