@@ -40,6 +40,13 @@ ccflags-y += -DCONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=1
 ccflags-y += -DCONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=1
 ccflags-y += -DCONFIG_KSU_SUSFS_OPEN_REDIRECT=1
 ccflags-y += -DCONFIG_KSU_SUSFS_SUS_MAP=1
+# --- Print SuSFS Version ---
+ifeq ($(strip $(CONFIG_KSU_SUSFS)),y)
+ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
+$(info -- SuSFS version: $(SUSFS_VERSION))
+endif
+endif
 EOF
         rm 10_enable_susfs_for_ksu.patch
     else
