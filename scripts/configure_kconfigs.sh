@@ -50,7 +50,13 @@ cd common
         if [ ! -f "$FRAGMENT_SRC" ]; then
             echo "[-] Error: Fragment not found at $FRAGMENT_SRC"
             exit 1
-        fi
+        fi  
+        
+        echo ">>> Dynamically wiring NoMount hooks into VFS tree..."
+        # Appending to the absolute end of the files bypasses all context-line shift errors across 5.10-6.12
+        grep -q "nomount" fs/Makefile || echo 'obj-$(CONFIG_NOMOUNT)		+= nomount/' >> fs/Makefile
+        grep -q "nomount" fs/Kconfig || echo 'source "fs/nomount/Kconfig"' >> fs/Kconfig
+        
 
         case "$BASE_VER" in
             5.10)

@@ -46,16 +46,16 @@ on:
 #        default: false
         
       custom_kconfigs:
-        description: "Inject custom Kconfigs (tools/custom.fragment)?"
+        description: "Inject nomount VFS?"
         required: false
         type: boolean
         default: false
-
-      custom_patches:
-        description: "Apply User Patches and Inject Source Files?"
-        required: false
-        type: boolean
-        default: false
+        
+#        custom_patches:
+#        description: "Apply User Patches and Inject Source Files?"
+#        required: false
+#        type: boolean
+#        default: false
         
       ota_url:
         description: "Full OTA ZIP URL (blank produces AK3 zip)"
@@ -306,7 +306,7 @@ jobs:
           ./scripts/configure_kconfigs.sh
           
       - name: Inject User Source Files
-        if: ${{ inputs.custom_patches }}
+        if: ${{ inputs.custom_kconfigs }}
         run: |
           SRC_DIR="$(pwd)/tools/user_source"
 
@@ -322,7 +322,7 @@ jobs:
         shell: bash
 
       - name: Apply User Patches
-        if: ${{ inputs.custom_patches }}
+        if: ${{ inputs.custom_kconfigs }}
         run: |
           PATCH_DIR="$(pwd)/tools/user_patches"
 
@@ -505,6 +505,31 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: out/final/
           if-no-files-found: error
+          
+      - name: Fetch NoMount KernelSU Module
+        if: inputs.custom_kconfigs == true
+        run: |
+          echo ">>> Fetching latest NoMount metamodule from maxsteeel/nomount..."
+          mkdir -p nomount_module
+          
+          # Query GitHub API for the latest release and extract the zip download URL
+          LATEST_URL=$(curl -s https://api.github.com/repos/maxsteeel/nomount/releases/latest | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url' | head -n 1)
+          
+          if [ -n "$LATEST_URL" ]; then
+            echo "  -> Downloading: $LATEST_URL"
+            wget -qO nomount_module/nomount-latest.zip "$LATEST_URL"
+          else
+            echo "[-] Failed to find NoMount release zip."
+          fi
+
+      - name: Upload NoMount Module
+        if: inputs.custom_kconfigs == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoMount-KSU-Module
+          path: nomount_module/*.zip
+          if-no-files-found: warn
+          
 
       - name: Upload Manager APK
         if: inputs.root_manager != 'Stock' && (inputs.enable_ksu_susfs == true || inputs.enable_ksu == true)
