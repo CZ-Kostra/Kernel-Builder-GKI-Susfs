@@ -19,9 +19,8 @@ cd common
     # 2. NEUTRALIZE STRICT SYMBOL LISTS & TRIMMING (ABI Bouncer Bypass)
     case "$BASE_VER" in
         5.10)
-            echo ">>> Disabling strict ABI mode & trimming in legacy build.config for $BASE_VER..."
-            sed -i 's/KMI_SYMBOL_LIST_STRICT_MODE=1/KMI_SYMBOL_LIST_STRICT_MODE=0/g' build.config.* 2>/dev/null || true
-            sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' build.config.* 2>/dev/null || true
+            echo ">>> Maintaining stock ABI/KMI strictness for 5.10 (Untouched to prevent bootloops)..."
+            # Destructive sed commands removed to preserve Android 12 vendor ABI
             ;;
         5.15)
             echo ">>> Disabling strict ABI mode & trimming in legacy configs and BUILD.bazel for 5.15..."
