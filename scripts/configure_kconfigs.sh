@@ -24,17 +24,18 @@ cd common
             sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' build.config.* 2>/dev/null || true
             ;;
         5.15)
-            echo ">>> Disabling strict ABI mode & trimming in legacy build.config AND BUILD.bazel for $BASE_VER..."
+            echo ">>> Disabling strict ABI mode & trimming in legacy configs and BUILD.bazel for 5.15..."
+            
+            # 1. Legacy Trimming/ABI Bypass
             sed -i 's/KMI_SYMBOL_LIST_STRICT_MODE=1/KMI_SYMBOL_LIST_STRICT_MODE=0/g' build.config.* 2>/dev/null || true
             sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' build.config.* 2>/dev/null || true
             
-            # Patch Bazel strict mode
+            # 2. Bazel Strict Mode Override
             sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel 2>/dev/null || true
             
-            # 🚀 NEW: Patch Bazel trimming rule so the console and compiler align
-            sed -i -E 's/(["\x27]?trim_nonlisted_kmi["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel 2>/dev/null || true
+            # 3. Bazel Trimming Override (Dictionary injection)
+            sed -i '/"kernel_aarch64": {/a \        "trim_nonlisted_kmi": False,' BUILD.bazel
             ;;
-
         6.1|6.6|6.12)
             echo ">>> Disabling strict ABI mode in BUILD.bazel for $BASE_VER..."
             sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel 2>/dev/null || true
@@ -55,12 +56,19 @@ cd common
             5.10)
                 echo ">>> Injecting Legacy 5.10 Kconfig Fragment..."
                 cp "$FRAGMENT_SRC" arch/arm64/configs/custom_legacy.fragment
-                # Hardcode the fragment request directly into the legacy config file!
+                # Hardcode the fragment request directly into the legacy config file
                 echo 'EXTRA_DEFCONFIG_FRAGMENTS="custom_legacy.fragment"' >> build.config.gki.aarch64
                 ;;
-            5.15|6.1)
-                echo ">>> Injecting Bazel 5.15 to 6.1 Kconfig Fragment..."
+            5.15)
+                echo ">>> Injecting Bazel 5.15 Kconfig Fragment via legacy build.config..."
+                # Sent to legacy Make ONLY. Bazel macro does not support post_defconfig_fragments.
+                cp "$FRAGMENT_SRC" arch/arm64/configs/custom_legacy.fragment
+                echo 'EXTRA_DEFCONFIG_FRAGMENTS="custom_legacy.fragment"' >> build.config.gki.aarch64
+                ;;
+            6.1)
+                echo ">>> Injecting Bazel 6.1 Kconfig Fragment..."
                 cp "$FRAGMENT_SRC" custom_fragment
+                # 6.1 uses the standard Starlark target declaration
                 sed -i '/name = "kernel_aarch64",/a \    post_defconfig_fragments = ["custom_fragment"],' BUILD.bazel
                 ;;
             *)

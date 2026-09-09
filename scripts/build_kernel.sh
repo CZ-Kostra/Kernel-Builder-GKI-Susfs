@@ -16,10 +16,11 @@ git -C common ls-files -m | xargs -r git -C common update-index --assume-unchang
 if [ "$BASE_VER" != "5.10" ] && [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected for $BASE_VER..."
     
-    # 5.15 Kleaf doesn't support --notrim, but configure_kconfigs.sh already patched build.config.*
+    # 5.15 Kleaf doesn't support the --notrim wrapper flag. 
+    # (configure_kconfigs.sh handles it physically via the dictionary injection)
     TRIM_FLAGS=""
     if [ "$BASE_VER" = "5.15" ]; then
-        echo "  -> 5.15 detected. Relying on physical build.config patches (omitting --notrim)..."
+        echo "  -> 5.15 detected. Relying on physical Bazel dictionary patch (omitting --notrim)..."
     else
         TRIM_FLAGS="--notrim"
     fi
