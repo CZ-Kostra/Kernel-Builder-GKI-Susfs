@@ -163,8 +163,8 @@ jobs:
 
               # Map standard GKI kernel bases to their logical LTS branches
               case "$BASE_VER" in
-                  "5.10") ANDROID_VER="android13" ;;
-                  "5.15") ANDROID_VER="android14" ;;
+                  "5.10") ANDROID_VER="android12" ;;
+                  "5.15") ANDROID_VER="android13" ;;
                   "6.1")  ANDROID_VER="android14" ;;
                   "6.6")  ANDROID_VER="android15" ;;
                   "6.12") ANDROID_VER="android16" ;;
