@@ -196,21 +196,23 @@ if [ "$ROOT_MANAGER" = "SukiSU-Ultra" ] || [ "$ROOT_MANAGER" = "ReSukiSU" ]; the
     sed -i '/ksu_install_su_fd/d' common/fs/exec.c
 fi
 
-# 2. Universal 6.1 cleanup for deprecated sucompat hook (All Variants)
-if [ "$BASE_VER" = "6.1" ]; then
-    echo "  -> 6.1 build detected. Satisfying linker with dummy sucompat function..."
+# 2. Cleanup for deprecated sucompat hook (5.10 & 6.1)
+if [ "$BASE_VER" = "5.10" ] || [ "$BASE_VER" = "6.1" ]; then
+    echo "  -> Kernel $BASE_VER detected. Satisfying linker with dummy sucompat function..."
     
-    # Instead of dangerous multi-line deletions, we simply provide an empty function
-    # at the very bottom of the file. The linker finds it, resolving the error instantly.
-    cat << 'EOF' >> common/fs/exec.c
+    # Check if dummy function has already been appended
+    if ! grep -q "/* Dummy function to satisfy linker for deprecated SuSFS hook */" common/fs/exec.c; then
+        cat << 'EOF' >> common/fs/exec.c
 
 /* Dummy function to satisfy linker for deprecated SuSFS hook */
 int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags, int *retval) {
     return 0;
 }
 EOF
-    
-    echo "  -> Dummy function successfully injected."
+        echo "  -> Dummy function successfully injected."
+    else
+        echo "  -> Dummy function already present in fs/exec.c. Skipping."
+    fi
 fi
 
 # 5.8 Fix misplaced SuSFS vfs_statfs declaration in fs/statfs.c
