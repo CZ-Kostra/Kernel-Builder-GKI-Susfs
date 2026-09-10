@@ -213,6 +213,20 @@ EOF
     echo "  -> Dummy function successfully injected."
 fi
 
+# 5.8 Fix misplaced SuSFS vfs_statfs declaration in fs/statfs.c
+echo ">>> Checking for misplaced susfs_sus_kstat_spoof_vfs_statfs declaration..."
+
+if [ "$BASE_VER" = "5.10" ]; then
+  # Only patch if susfs_statfs_by_dentry is present and we haven't already inserted the early declaration
+  if grep -q "susfs_statfs_by_dentry" common/fs/statfs.c && ! grep -q "/\* CI_STATFS_FIX \*/" common/fs/statfs.c; then
+    echo "  -> Detected function call above declaration. Injecting early prototype into fs/statfs.c..."
+    sed -i '/static int susfs_statfs_by_dentry/i /* CI_STATFS_FIX */\nextern int susfs_sus_kstat_spoof_vfs_statfs(struct inode *inode, struct kstatfs *buf, bool *is_fuse);' common/fs/statfs.c
+    echo "  -> Early prototype successfully injected!"
+  else
+    echo "  -> statfs declaration already positioned correctly or not present. Skipping."
+  fi
+fi
+
 # 6. Final Validation
 echo ">>> Checking for unresolved patch rejections..."
 mapfile -t REMAINING_REJ < <(find common -type f -name '*.rej')
