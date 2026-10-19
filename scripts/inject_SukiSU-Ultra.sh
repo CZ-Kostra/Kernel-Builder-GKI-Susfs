@@ -3,9 +3,10 @@
 
 echo ">>> Executing Integration Module for SukiSU-Ultra..."
 
-OFFICIAL_REPO_URL="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
-CUSTOM_REPO_URL="${KSU_VARIANT_REPO_URL:-https://github.com/shoey63/SukiSU-Ultra.git}"
-CUSTOM_REF="${KSU_VARIANT_REF:-stable}"
+# 1. Inherit variables dynamically from the parent runner
+OFFICIAL_REPO_URL="https://github.com/${UPSTREAM_REPO}.git"
+CUSTOM_REPO_URL="${KSU_VARIANT_REPO_URL}"
+CUSTOM_REF="${KSU_VARIANT_REF}"
 
 echo ">>> 1. Cloning custom branch (${CUSTOM_REF}) from ${CUSTOM_REPO_URL}..."
 git clone -b "${CUSTOM_REF}" "${CUSTOM_REPO_URL}" "${MANAGER_DIR}"
@@ -18,17 +19,17 @@ cd ..
 
 cd "${MANAGER_DIR}"
 
-echo ">>> 2. Fetching latest official upstream (main + tags)..."
-git fetch --tags --force "${OFFICIAL_REPO_URL}" main
-
 if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
-    echo ">>> 3. Dynamic mode active: Rebasing '${CUSTOM_REF}' onto bleeding-edge upstream/main..."
+    echo ">>> 2. Dynamic mode active: Fetching latest official upstream (${TARGET_BRANCH})..."
+    git fetch --tags --force "${OFFICIAL_REPO_URL}" "${TARGET_BRANCH}"
+
+    echo ">>> 3. Rebasing '${CUSTOM_REF}' onto bleeding-edge upstream/${TARGET_BRANCH}..."
     git config user.name "github-actions[bot]"
     git config user.email "github-actions[bot]@users.noreply.github.com"
 
     if git rebase FETCH_HEAD; then
         echo "  -> On-the-fly rebase succeeded cleanly!"
-        UPSTREAM_BRANCH="main"
+        UPSTREAM_BRANCH="${TARGET_BRANCH}"
     else
         echo "  -> [WARNING] Rebase conflict detected with latest upstream!"
         git rebase --abort
@@ -36,7 +37,10 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
         UPSTREAM_BRANCH="${CUSTOM_REF}"
     fi
 else
-    echo ">>> 3. Safe fallback channel active: Using pinned '${CUSTOM_REF}' state without rebasing."
+    echo ">>> 2. Safe fallback channel active: Fetching upstream sync point..."
+    git fetch --quiet --tags --force "${OFFICIAL_REPO_URL}" "${TARGET_BRANCH}"
+    
+    echo ">>> 3. Using pinned '${CUSTOM_REF}' state without rebasing."
     UPSTREAM_BRANCH="${CUSTOM_REF}"
 fi
 

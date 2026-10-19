@@ -268,6 +268,35 @@ if [ "$BASE_VER" = "5.10" ]; then
     fi
 fi
 
+# 5.10 Smart Upstream Preinit Workaround (LLD Linker Fix)
+echo ">>> Checking upstream SELinux preinit status..."
+
+if [ -f "common/fs/exec.c" ]; then
+    # Scan the KernelSU/SukiSU source directories to see if the backend code has arrived yet
+    if ! grep -rq "ksu_setup_preinit_file" common/*/kernel/ 2>/dev/null && \
+       ! grep -rq "ksu_setup_preinit_file" common/drivers/kernelsu/ 2>/dev/null; then
+        
+        echo "  -> Preinit backend implementation missing. Injecting KSU_NO_PREINIT..."
+        sed -i '1i #define KSU_NO_PREINIT 1' common/fs/exec.c
+        echo "  -> Preinit symbols successfully neutralized!"
+    else
+        echo "  -> Upstream preinit backend detected! Skipping workaround to let native logic run."
+    fi
+fi
+
+# 5.11 Fix preinit.c close_fd API Mismatch (Kernel 5.10)
+echo ">>> Checking close_fd API compatibility in preinit.c..."
+
+if [ "$K_VER" = "5" ] && [ "$K_PATCH" = "10" ]; then
+    PREINIT_FILE="common/drivers/kernelsu/preinit/preinit.c"
+    if [ -f "$PREINIT_FILE" ] && grep -q "close_fd(" "$PREINIT_FILE"; then
+        echo "  -> Kernel 5.10 detected. Downgrading close_fd() to __close_fd()..."
+        # Regex captures the variable (e.g., 'fd') and formats it for the 5.10 API
+        sed -i 's/close_fd(\([^)]*\))/__close_fd(current->files, \1)/g' "$PREINIT_FILE"
+        echo "  -> preinit.c API mismatch resolved for 5.10!"
+    fi
+fi
+
 # 6. Final Validation
 echo ">>> Checking for unresolved patch rejections..."
 mapfile -t REMAINING_REJ < <(find common -type f -name '*.rej')
