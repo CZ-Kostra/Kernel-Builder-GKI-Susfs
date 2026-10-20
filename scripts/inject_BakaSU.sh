@@ -3,19 +3,25 @@
 
 echo ">>> Executing Integration Module for BakaSU..."
 
+# 1. Universally clone the target branch handed down by the YAML
+echo ">>> 1. Cloning target branch (${KSU_VARIANT_REF}) from ${KSU_VARIANT_REPO_URL}..."
+git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
+
+ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
+cd common
+bash "${MANAGER_DIR}/kernel/setup.sh" "${KSU_VARIANT_REF}"
+cd ..
+
+cd "${MANAGER_DIR}"
+
 if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
-    echo ">>> 1. Cloning pristine official BakaSU upstream..."
-    git clone -b "${TARGET_BRANCH}" "https://github.com/${UPSTREAM_REPO}.git" "${MANAGER_DIR}"
+    echo ">>> [DYNAMIC] Executing Automated Dynamic Transplant for BakaSU..."
     
-    ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
-    cd common
-    bash "${MANAGER_DIR}/kernel/setup.sh" "${TARGET_BRANCH}"
-    cd ..
-    
-    cd "${MANAGER_DIR}"
+    # In dynamic, HEAD is already pristine upstream. Grab the hash!
     UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --grep="clippy" --invert-grep -- manager/ kernel/ userspace/ .github/workflows/ ":!*Cargo.lock" ":!*Cargo.toml")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-    CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}")
+    CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
+    
     UPSTREAM_BRANCH="${TARGET_BRANCH}"
 
     echo ">>> 2. Applying dynamic Kleaf bypass & Kconfig overrides..."
@@ -24,22 +30,15 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     sed -i 's/depends on KSU != m/depends on n/g' kernel/Kconfig
     sed -i 's/ifeq ($(shell test -e $(srctree)\/fs\/susfs.c.*/ifeq (0,0)/g' kernel/Kbuild
     sed -i 's/cat $(srctree)\/include\/linux\/susfs.h |/cat $(srctree)\/include\/linux\/susfs.h 2>\/dev\/null |/g' kernel/Kbuild
-    cd ..
+
 else
-    echo ">>> Safe fallback channel detected. Cloning custom pipeline branch..."
-    git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
-    
-    ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
-    cd common
-    bash "${MANAGER_DIR}/kernel/setup.sh" "${KSU_VARIANT_REF}"
-    cd ..
+    echo ">>> [STABLE] Safe fallback channel detected. Bypassing dynamic overrides..."
     
     UPSTREAM_BRANCH="${KSU_VARIANT_REF}"
     
-    cd "${MANAGER_DIR}"
-    
     echo ">>> Locating official upstream sync point for ${UPSTREAM_REPO}..."
-    git fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" "${TARGET_BRANCH}"
+    # Guarantee safe tag math with --tags --force
+    git fetch --quiet --tags --force "https://github.com/${UPSTREAM_REPO}.git" "${TARGET_BRANCH}"
     RAW_BASE=$(git merge-base HEAD FETCH_HEAD)
     
     set +o pipefail
@@ -48,9 +47,10 @@ else
 
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v0.0.0")
-    
-    cd ..
 fi
+
+# Exit the MANAGER_DIR universally
+cd ..
 
 # ---------------------------------------------------------
 # BakaSU Hotfixes

@@ -3,27 +3,22 @@
 
 echo ">>> Executing Integration Module for SukiSU-Ultra..."
 
-# 1. Inherit variables dynamically from the parent runner
-OFFICIAL_REPO_URL="https://github.com/${UPSTREAM_REPO}.git"
-CUSTOM_REPO_URL="${KSU_VARIANT_REPO_URL}"
-CUSTOM_REF="${KSU_VARIANT_REF}"
-
-echo ">>> 1. Cloning custom branch (${CUSTOM_REF}) from ${CUSTOM_REPO_URL}..."
-git clone -b "${CUSTOM_REF}" "${CUSTOM_REPO_URL}" "${MANAGER_DIR}"
+echo ">>> 1. Cloning target branch (${KSU_VARIANT_REF}) from ${KSU_VARIANT_REPO_URL}..."
+git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
 
 ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
 cd common
 # Run setup.sh BEFORE rebasing so it links common/drivers/kernelsu without clobbering git history
-bash "${MANAGER_DIR}/kernel/setup.sh" "${CUSTOM_REF}"
+bash "${MANAGER_DIR}/kernel/setup.sh" "${KSU_VARIANT_REF}"
 cd ..
 
 cd "${MANAGER_DIR}"
 
 if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     echo ">>> 2. Dynamic mode active: Fetching latest official upstream (${TARGET_BRANCH})..."
-    git fetch --tags --force "${OFFICIAL_REPO_URL}" "${TARGET_BRANCH}"
+    git fetch --tags --force "https://github.com/${UPSTREAM_REPO}.git" "${TARGET_BRANCH}"
 
-    echo ">>> 3. Rebasing '${CUSTOM_REF}' onto bleeding-edge upstream/${TARGET_BRANCH}..."
+    echo ">>> 3. Rebasing '${KSU_VARIANT_REF}' onto bleeding-edge upstream/${TARGET_BRANCH}..."
     git config user.name "github-actions[bot]"
     git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -33,15 +28,15 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     else
         echo "  -> [WARNING] Rebase conflict detected with latest upstream!"
         git rebase --abort
-        echo "  -> Aborted rebase and fell back to last known-good '${CUSTOM_REF}' state."
-        UPSTREAM_BRANCH="${CUSTOM_REF}"
+        echo "  -> Aborted rebase and fell back to last known-good '${KSU_VARIANT_REF}' state."
+        UPSTREAM_BRANCH="${KSU_VARIANT_REF}"
     fi
 else
     echo ">>> 2. Safe fallback channel active: Fetching upstream sync point..."
-    git fetch --quiet --tags --force "${OFFICIAL_REPO_URL}" "${TARGET_BRANCH}"
+    git fetch --quiet --tags --force "https://github.com/${UPSTREAM_REPO}.git" "${TARGET_BRANCH}"
     
-    echo ">>> 3. Using pinned '${CUSTOM_REF}' state without rebasing."
-    UPSTREAM_BRANCH="${CUSTOM_REF}"
+    echo ">>> 3. Using pinned '${KSU_VARIANT_REF}' state without rebasing."
+    UPSTREAM_BRANCH="${KSU_VARIANT_REF}"
 fi
 
 # 4. Calculate the official upstream sync point for version count and Manager APK matching

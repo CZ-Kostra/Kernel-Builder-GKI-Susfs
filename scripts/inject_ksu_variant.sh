@@ -6,16 +6,16 @@ cd kernel_workspace
 [ -d common ] || { echo "[-] common/ not found in kernel_workspace" >&2; exit 1; }
 
 VARIANT=$1
-# Export these so the sourced scripts can use them natively
-export KSU_VARIANT_REF=$(echo "${KSU_VARIANT_REF:-}" | xargs)
-export USE_DYNAMIC_TRANSPLANT=$(echo "${USE_DYNAMIC_TRANSPLANT:-false}" | tr '[:upper:]' '[:lower:]')
 
-# 1. Map the expected directory name based on the variant's internal setup.sh hardcoding
+# 1. Map the expected directory name based on the variant's target folder
 case "${VARIANT}" in
     "KernelSU-Next")
         export MANAGER_DIR="KernelSU-Next"
         ;;
-    "SukiSU-Ultra" | "ReSukiSU" | "KernelSU" | "BakaSU")
+    "ReSukiSU")
+        export MANAGER_DIR="ReSukiSU"
+        ;;
+    "SukiSU-Ultra" | "KernelSU" | "BakaSU")
         export MANAGER_DIR="KernelSU"
         ;;
     *)
@@ -120,7 +120,7 @@ if [ -f "$TARGET_KBUILD" ]; then
         echo "override KSU_COMMIT_SHA := ${SHORT_HASH}"
         echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
-        # --- ReSukiSU Namespaces ---
+        # --- BakaSU/ReSukiSUNamespaces ---
         echo "override LOCAL_GIT_EXISTS := 1"
         echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
         echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
