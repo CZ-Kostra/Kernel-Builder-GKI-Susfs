@@ -3,6 +3,14 @@
 
 echo ">>> Executing Integration Module for SukiSU-Ultra..."
 
+# Override channel routing so both 'stable' and 'dynamic' runs pull the custom
+# SuSFS pt_regs commits from the shoey63 fork (while leaving 'main' untouched).
+if [ "${BUILD_CHANNEL}" != "main" ]; then
+    echo ">>> [OVERRIDE] Routing SukiSU-Ultra base clone to shoey63/SukiSU-Ultra (stable)..."
+    KSU_VARIANT_REPO_URL="https://github.com/shoey63/SukiSU-Ultra.git"
+    KSU_VARIANT_REF="rebase"
+fi
+
 echo ">>> 1. Cloning target branch (${KSU_VARIANT_REF}) from ${KSU_VARIANT_REPO_URL}..."
 git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
 
@@ -51,44 +59,8 @@ CALCULATED_TAG=$(git describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null |
 
 cd ..
 
-# ---------------------------------------------------------
-# SukiSU-Ultra Linker Hotfixes (GOT/PLT Panic Fix)
-# ---------------------------------------------------------
-K_VER=$(grep "^VERSION =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
-K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
-
-if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "6" ]; then
-    SELINUX_HIDE_FILE="${MANAGER_DIR}/kernel/feature/selinux_hide.c"
-    
-    if [ -f "$SELINUX_HIDE_FILE" ]; then
-        echo ">>> [HOTFIX] Hardening trailing __weak stubs to prevent Android GKI GOT/PLT panics..."
-        sed -i 's/) __weak;/);/g' "$SELINUX_HIDE_FILE"
-        sed -i 's/__weak//g' "$SELINUX_HIDE_FILE"
-        echo "  -> Trailing weak stubs successfully hardened into strong LTO symbols."
-    fi
-fi
-
-# ---------------------------------------------------------
-# SukiSU-Ultra Clang 17 & Linker Undefined Symbol Hotfix
-# ---------------------------------------------------------
-K_VER=$(grep "^VERSION =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
-K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
-
-if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "6" ]; then
-    SELINUX_HIDE_FILE="${MANAGER_DIR}/kernel/feature/selinux_hide.c"
-    
-    if [ -f "$SELINUX_HIDE_FILE" ]; then
-        echo ">>> [HOTFIX] Neutering missing weak fallbacks via dead-code elimination..."
-        
-        # Replace the check with 'if (0)' to optimize away the undefined linker references
-        sed -i -E 's/if \([[:space:]]*\&?security_dump_masked_av_fn[[:space:]]*\)/if (0)/g' "$SELINUX_HIDE_FILE"
-        sed -i -E 's/if \([[:space:]]*\&?context_struct_compute_av_fn[[:space:]]*\)/if (0)/g' "$SELINUX_HIDE_FILE"
-        
-        echo "  -> Unresolved weak fallback blocks eliminated."
-    fi
-fi
-
 echo "  -> Target Tag: $CALCULATED_TAG"
 echo "  -> Target Hash: $UPSTREAM_HASH"
 echo "  -> Target Count: $CALCULATED_COUNT"
+
 echo ">>> SukiSU-Ultra integration complete."
