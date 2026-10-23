@@ -23,7 +23,7 @@ if [ "${BASE_VER:-}" = "5.10" ]; then
     fi
 fi
 
-# 3. SukiSU-Ultra: Dynamic Amputation of Legacy SuSFS Hooks
+# 1.5. SukiSU-Ultra: Dynamic Amputation of Legacy SuSFS Hooks
 if [ "${ROOT_MANAGER:-}" = "SukiSU-Ultra" ]; then
     echo ">>> SukiSU-Ultra detected via ROOT_MANAGER. Routing legacy SuSFS wrappers..."
 
@@ -36,6 +36,21 @@ if [ "${ROOT_MANAGER:-}" = "SukiSU-Ultra" ]; then
     
     if [ -f "common/security/selinux/hooks.c" ]; then
         sed -i 's/return my_setprocattr/return selinux_setprocattr/g' common/security/selinux/hooks.c
+    fi
+fi
+
+# 1.6. BakaSU: Dynamic Amputation of Legacy SELinux Hide Hooks
+if [ "${ROOT_MANAGER:-}" = "BakaSU" ]; then
+    echo ">>> [HOTFIX] BakaSU detected. Neutralizing obsolete fake_status hooks..."
+    
+    if [ -f "common/security/selinux/selinuxfs.c" ]; then
+        # 1. Neutralize all execution blocks to trigger Dead Code Elimination
+        sed -i 's/if (ksu_selinux_hide_running)/if (0)/g' common/security/selinux/selinuxfs.c
+        
+        # 2. Obliterate the static branch macro to prevent inline assembly jump tables from being generated
+        sed -i 's/static_branch_likely(&fake_status_initialize_key)/1/g' common/security/selinux/selinuxfs.c
+        
+        echo "  -> selinuxfs.c fake_status symbols safely amputated."
     fi
 fi
 
