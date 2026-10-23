@@ -37,22 +37,6 @@ if [ "${ROOT_MANAGER:-}" = "SukiSU-Ultra" ]; then
     if [ -f "common/security/selinux/hooks.c" ]; then
         sed -i 's/return my_setprocattr/return selinux_setprocattr/g' common/security/selinux/hooks.c
     fi
-
-    # ---------------------------------------------------------
-    # SukiSU-Ultra Upstream Preinit & Sucompat Workaround
-    # ---------------------------------------------------------
-    if [ -f "common/fs/exec.c" ]; then
-        echo ">>> [HOTFIX] Neutralizing missing execveat hooks for SukiSU-Ultra..."
-               
-        # 1. Neutralize ksu_handle_post_execveat_sucompat (Not covered by KSU_NO_PREINIT)
-        # We explicitly target the execution call which starts with '(void)' to avoid breaking the multi-line extern declaration.
-        sed -i 's/.*(void)ksu_handle_post_execveat_sucompat.*/\t\t(void)0; \/\/ ksu_handle_post_execveat_sucompat bypassed/g' common/fs/exec.c
-
-        # 2. Neutralize ksu_preinit_handle_post_execveat & ksu_setup_preinit_file
-        sed -i '1i #define KSU_NO_PREINIT 1' common/fs/exec.c
-        
-        echo "  -> common/fs/exec.c legacy symbols neutralized."
-    fi
 fi
 
 # 2. Kernel 6.6+: Fix mm/rmap.c Redundant SuSFS Backport
