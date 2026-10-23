@@ -46,68 +46,6 @@ else
 fi
 
 # ========================================================================
-# KERNEL 6.6/6.12 UPSTREAM COMPATIBILITY FIXES (UNIVERSAL TARGETED WIPER)
-# ========================================================================
-ENABLE_UPSTREAM_FIXES="false" # <-- SWITCH: Change to "true" to re-enable hotfixes
-
-if [ "$ENABLE_UPSTREAM_FIXES" = "true" ]; then
-    echo ">>> Normalizing SELinux function declarations across all variants..."
-    SELINUX_HIDE="${MANAGER_DIR}/kernel/feature/selinux_hide.c"
-
-    if [ -f "$SELINUX_HIDE" ]; then
-        
-        K_VER=$(grep "^VERSION =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
-        K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
-        
-        if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "6" ]; then
-            COMPUTE_AV_RET="void"
-        else
-            COMPUTE_AV_RET="int"
-        fi
-        
-        # 1. ONLY strip export/cfi macros and fix return types. DO NOT strip static/scoping from functions!
-        FUNCS=(
-            "security_compute_av_user_with_policy"
-            "security_context_to_sid_with_policy"
-            "security_sid_to_context_with_policy"
-            "ksu_security_compute_av_user"
-            "ksu_security_context_to_sid"
-            "ksu_security_sid_to_context"
-        )
-
-        for FUNC in "${FUNCS[@]}"; do
-            # Strip SUSFS_EXPORT or __nocfi, but leave static and __maybe_static intact
-            sed -i -E "/$FUNC/ s/(SUSFS_EXPORT|__nocfi)[[:space:]]+//g" "$SELINUX_HIDE"
-            sed -i -E "/$FUNC/ s/__maybe_int/int/g" "$SELINUX_HIDE"
-            sed -i -E "/$FUNC/ s/__maybe_void/$COMPUTE_AV_RET/g" "$SELINUX_HIDE"
-        done
-
-        # 2. Strip all static prefixes from native stealth variables so they ARE globally visible
-        sed -i -E 's/(__maybe_static|static)[[:space:]]+bool ksu_selinux_hide/bool ksu_selinux_hide/g' "$SELINUX_HIDE"
-        sed -i -E 's/(__maybe_static|static)[[:space:]]+struct page \*fake_status/struct page \*fake_status/g' "$SELINUX_HIDE"
-        sed -i -E 's/(__maybe_static|static)[[:space:]]+DEFINE_STATIC_KEY_FALSE/DEFINE_STATIC_KEY_FALSE/g' "$SELINUX_HIDE"
-        sed -i -E 's/(__maybe_static|static)[[:space:]]+void initialize_fake_status/void initialize_fake_status/g' "$SELINUX_HIDE"
-        sed -i -E 's/(__maybe_static|static)[[:space:]]+struct selinux_policy \*backup_sepolicy/struct selinux_policy \*backup_sepolicy/g' "$SELINUX_HIDE"
-        
-        echo "  -> Enforced clean C declarations for SELinux hooks and global state variables."
-
-        # 3. Universal fake_state polyfill (Survives Link-Time Optimization)
-        sed -i -E 's/^[ \t]*static[ \t]+struct selinux_state fake_state/struct selinux_state fake_state/g' "$SELINUX_HIDE"
-        
-        if ! grep -q "KSU_FAKE_STATE_POLYFILL" "$SELINUX_HIDE"; then
-            cat << 'EOF' >> "$SELINUX_HIDE"
-
-/* KSU_FAKE_STATE_POLYFILL */
-__attribute__((weak)) struct selinux_state fake_state = {0};
-EOF
-            echo "  -> Universal fake_state polyfill applied."
-        fi
-    fi
-else
-    echo ">>> [TESTING] Bypassing SELinux normalization hotfixes (ENABLE_UPSTREAM_FIXES=false)."
-fi
-
-# ========================================================================
 # KLEAF SANDBOX IMMUTABLE GATEKEEPER
 # ========================================================================
 # (These variables were populated by the sourced variant script)

@@ -123,6 +123,27 @@ EOF
     fi
 fi    
 
+# Un-hide static SELinux state variables to satisfy 50_patch linker requirements
+echo ">>> [HOTFIX] Un-hiding BakaSU static SELinux state variables for 50_patch..."
+    
+    # Strip static prefixes so the 50_ patch can link to BakaSU's native state
+    sed -i -E 's/(__maybe_static|static)[[:space:]]+bool ksu_selinux_hide/bool ksu_selinux_hide/g' "$SELINUX_HIDE_FILE"
+    sed -i -E 's/(__maybe_static|static)[[:space:]]+struct page \*fake_status/struct page \*fake_status/g' "$SELINUX_HIDE_FILE"
+    sed -i -E 's/(__maybe_static|static)[[:space:]]+DEFINE_STATIC_KEY_FALSE/DEFINE_STATIC_KEY_FALSE/g' "$SELINUX_HIDE_FILE"
+    sed -i -E 's/(__maybe_static|static)[[:space:]]+void initialize_fake_status/void initialize_fake_status/g' "$SELINUX_HIDE_FILE"
+    sed -i -E 's/(__maybe_static|static)[[:space:]]+struct selinux_policy \*backup_sepolicy/struct selinux_policy \*backup_sepolicy/g' "$SELINUX_HIDE_FILE"
+    
+    # Universal fake_state polyfill to survive LTO
+    sed -i -E 's/^[ \t]*static[ \t]+struct selinux_state fake_state/struct selinux_state fake_state/g' "$SELINUX_HIDE_FILE"
+    if ! grep -q "KSU_FAKE_STATE_POLYFILL" "$SELINUX_HIDE_FILE"; then
+        cat << 'EOF' >> "$SELINUX_HIDE_FILE"
+
+/* KSU_FAKE_STATE_POLYFILL */
+__attribute__((weak)) struct selinux_state fake_state = {0};
+EOF
+    fi
+    echo "  -> BakaSU legacy variables safely un-hidden."
+
 echo "  -> Target Tag: $CALCULATED_TAG"
 echo "  -> Target Hash: $UPSTREAM_HASH"
 echo "  -> Target Count: $CALCULATED_COUNT"
