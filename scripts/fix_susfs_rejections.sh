@@ -27,8 +27,6 @@ fi
 if [ "${ROOT_MANAGER:-}" = "SukiSU-Ultra" ]; then
     echo ">>> SukiSU-Ultra detected via ROOT_MANAGER. Routing legacy SuSFS wrappers..."
 
-    # The 50_ patch creates wrappers (e.g., handle_sel_write_context) that route to my_write_context.
-    # We simply swap the missing my_* function calls directly to the native kernel functions.
     if [ -f "common/security/selinux/selinuxfs.c" ]; then
         sed -i 's/return my_write_context/return sel_write_context/g' common/security/selinux/selinuxfs.c
         sed -i 's/return my_write_access/return sel_write_access/g' common/security/selinux/selinuxfs.c
@@ -36,6 +34,13 @@ if [ "${ROOT_MANAGER:-}" = "SukiSU-Ultra" ]; then
     
     if [ -f "common/security/selinux/hooks.c" ]; then
         sed -i 's/return my_setprocattr/return selinux_setprocattr/g' common/security/selinux/hooks.c
+    fi
+
+    # Unconditionally sever 50_ patch exec.c calls so strong SukiSU symbols don't double-fire
+    if [ -f "common/fs/exec.c" ]; then
+        echo ">>> [HOTFIX] Severing 50_ patch execveat hooks for SukiSU-Ultra..."
+        sed -i 's/.*(void)ksu_handle_post_execveat_sucompat.*/\t\t(void)0; \/\/ ksu_handle_post_execveat_sucompat bypassed/g' common/fs/exec.c
+        sed -i '1i #define KSU_NO_PREINIT 1' common/fs/exec.c
     fi
 fi
 
